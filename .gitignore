@@ -25,3 +25,11 @@ replay_pid*
 
 # Python scripts
 __pycache__/
+
+# Maven build output
+target/
+
+# Local embedded H2 database files (file-dupe-detector persistence store)
+*.mv.db
+*.trace.db
+*.lock.db

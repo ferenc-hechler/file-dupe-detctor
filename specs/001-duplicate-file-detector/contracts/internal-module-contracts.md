@@ -36,7 +36,7 @@ package com.filedupedetector.persistence;
 public interface FileRecordRepository {
     Optional<FileRecord> findByLocationAndPath(long scanLocationId, String relativePath);
     FileRecord upsert(FileRecord record); // insert or update, keyed by (scanLocationId, relativePath)
-    void markMissing(long scanLocationId, Set<String> relativePathsNotSeen, long scanSessionId);
+    void markMissing(long scanLocationId, Set<String> relativePathsNotSeen, long scanSessionId); // returns count in implementation
     List<DuplicateGroup> findDuplicateGroups(); // PRESENT + non-null hash, grouped by (size, hash), count > 1
     List<FileRecord> findErroredBySession(long scanSessionId);
 }

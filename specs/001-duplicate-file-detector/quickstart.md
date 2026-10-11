@@ -64,3 +64,31 @@ Expected outcome: A Swing window opens. The persisted database file is created o
 | Scenario 2 | SC-002, SC-004 |
 | Scenario 3 | SC-003 |
 | Scenario 4 | SC-005 |
+
+## Validation Log (T047)
+
+Executed against the packaged JAR (`mvn clean package` → `target/file-dupe-detector-1.0.0-SNAPSHOT.jar`)
+using the console harness (CLI args) for Scenarios 1, 2, and 4, since the GUI (Scenario 3) cannot
+be driven headlessly in this environment. GUI tree-view behavior (Scenario 3) is instead verified
+via the automated headless tests `LazyFileTreeModelTest` and `DuplicateGroupDetailPanelLogicTest`.
+
+- **Scenario 1 (duplicate detection)**: PASS — two folders with one identical-content pair
+  (`photo1.jpg` / `photo-copy.jpg`) plus one unique file each produced exactly 1 duplicate group
+  with the correct 2 members; unique files were excluded.
+- **Scenario 2 (persistence / re-scan reuse / change / deletion)**: PASS —
+  - Restarting the app showed "Loaded 2 persisted location(s) and 1 previously known duplicate
+    group(s)" without a new scan (FR-005, SC-004).
+  - Re-scanning unmodified files produced identical results (`Found 1 duplicate group(s)`).
+  - Modifying `photo-copy.jpg` caused the duplicate group to disappear (`Found 0 duplicate group(s)`),
+    confirming per-file change detection (FR-007).
+  - Deleting `unique-a.txt` produced `missing=1` in the scan session summary (FR-008).
+- **Scenario 4 (resilience)**: PASS — scanning one valid folder plus one nonexistent path logged
+  `WARNING: location unavailable: ...`, reported `outcome=INTERRUPTED`, and still processed and
+  reported results for the valid folder (`processed=1`) rather than aborting the whole run (FR-014).
+- **Scenario 3 (tree view navigation)**: Verified via automated tests rather than manual GUI
+  interaction in this run — `LazyFileTreeModelTest` confirms lazy per-location loading and correct
+  folder hierarchy construction; `DuplicateGroupDetailPanelLogicTest` confirms the selection → full
+  group member (path + location) resolution logic used by the detail panel.
+
+No deviations from expected behavior were observed.
+
