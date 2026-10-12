@@ -10,7 +10,7 @@ import com.filedupedetector.persistence.JdbcFileRecordRepository;
 import com.filedupedetector.persistence.JdbcScanLocationRepository;
 import com.filedupedetector.persistence.JdbcScanSessionRepository;
 import com.filedupedetector.scan.NioFileWalker;
-import com.filedupedetector.scan.Sha256HashService;
+import com.filedupedetector.scan.Sha1HashService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -50,7 +50,7 @@ class RescanDetectsMissingFilesTest {
             ScanLocation locationA = scanLocationRepository.save(newLocation("A", folderA));
             ScanLocation locationB = scanLocationRepository.save(newLocation("B", folderB));
 
-            var scanService = new ScanServiceImpl(new NioFileWalker(), new Sha256HashService(), new DuplicateMatcher(),
+            var scanService = new ScanServiceImpl(new NioFileWalker(), new Sha1HashService(), new DuplicateMatcher(),
                     fileRecordRepository, scanLocationRepository, scanSessionRepository);
 
             runScanAndWait(scanService, List.of(locationA, locationB));

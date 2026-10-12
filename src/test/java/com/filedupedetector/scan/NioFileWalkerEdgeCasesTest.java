@@ -36,7 +36,7 @@ class NioFileWalkerEdgeCasesTest {
 
         // Both zero-byte files should still produce identical, comparable hashes (not excluded
         // just because they are empty - duplicate detection still applies per Edge Cases).
-        Sha256HashService hashService = new Sha256HashService();
+        Sha1HashService hashService = new Sha1HashService();
         assertThat(hashService.computeHash(emptyA)).isEqualTo(hashService.computeHash(emptyB));
     }
 

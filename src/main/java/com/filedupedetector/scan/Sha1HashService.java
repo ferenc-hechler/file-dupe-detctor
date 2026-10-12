@@ -9,12 +9,12 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
 /**
- * Computes SHA-256 hex digests by streaming file content in fixed-size buffered chunks,
+ * Computes SHA-1 hex digests by streaming file content in fixed-size buffered chunks,
  * never loading whole files into memory (FR-002, research.md decision 4).
  */
-public final class Sha256HashService implements HashService {
+public final class Sha1HashService implements HashService {
 
-    private static final String ALGORITHM = "SHA-256";
+    private static final String ALGORITHM = "SHA-1";
     private static final int BUFFER_SIZE = 8192;
 
     @Override

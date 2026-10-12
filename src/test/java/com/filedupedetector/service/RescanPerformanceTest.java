@@ -8,7 +8,7 @@ import com.filedupedetector.persistence.JdbcFileRecordRepository;
 import com.filedupedetector.persistence.JdbcScanLocationRepository;
 import com.filedupedetector.persistence.JdbcScanSessionRepository;
 import com.filedupedetector.scan.NioFileWalker;
-import com.filedupedetector.scan.Sha256HashService;
+import com.filedupedetector.scan.Sha1HashService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -65,7 +65,7 @@ class RescanPerformanceTest {
             location.setType(LocationType.LOCAL);
             location = scanLocationRepository.save(location);
 
-            var scanService = new ScanServiceImpl(new NioFileWalker(), new Sha256HashService(), new DuplicateMatcher(),
+            var scanService = new ScanServiceImpl(new NioFileWalker(), new Sha1HashService(), new DuplicateMatcher(),
                     fileRecordRepository, scanLocationRepository, scanSessionRepository);
 
             long firstScanStart = System.nanoTime();

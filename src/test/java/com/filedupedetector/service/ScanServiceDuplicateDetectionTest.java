@@ -9,7 +9,7 @@ import com.filedupedetector.persistence.JdbcFileRecordRepository;
 import com.filedupedetector.persistence.JdbcScanLocationRepository;
 import com.filedupedetector.persistence.JdbcScanSessionRepository;
 import com.filedupedetector.scan.NioFileWalker;
-import com.filedupedetector.scan.Sha256HashService;
+import com.filedupedetector.scan.Sha1HashService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -51,7 +51,7 @@ class ScanServiceDuplicateDetectionTest {
 
             var scanService = new ScanServiceImpl(
                     new NioFileWalker(),
-                    new Sha256HashService(),
+                    new Sha1HashService(),
                     new DuplicateMatcher(),
                     fileRecordRepository,
                     scanLocationRepository,

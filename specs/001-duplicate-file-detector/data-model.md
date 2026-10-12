@@ -33,7 +33,7 @@ Persisted information about a single scanned file (FR-005).
 | `scanLocationId` | long (FK → ScanLocation.id) | Owning scan location |
 | `relativePath` | String | Path relative to the scan location's root (full path = rootPath + relativePath) |
 | `sizeBytes` | long | File size in bytes, captured at last successful read |
-| `contentHash` | String, nullable | Hex-encoded SHA-256 digest; `null` if not yet computed or file skipped/errored |
+| `contentHash` | String, nullable | Hex-encoded SHA-1 digest; `null` if not yet computed or file skipped/errored |
 | `lastModifiedAt` | timestamp | Filesystem last-modified time at last successful read, used for change detection |
 | `status` | enum: `PRESENT`, `MISSING`, `ERRORED` | `PRESENT` = seen and readable in the most recent scan; `MISSING` = previously seen, not found in latest scan of its location; `ERRORED` = found but could not be read/hashed (permission/lock/placeholder) |
 | `lastScanSessionId` | long (FK → ScanSession.id), nullable | Which scan session last updated this record |

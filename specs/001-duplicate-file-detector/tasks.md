@@ -3,6 +3,8 @@
 description: "Task list template for feature implementation"
 ---
 
+<!-- markdownlint-disable MD053 -->
+
 # Tasks: Duplicate File Detector
 
 **Input**: Design documents from `/specs/001-duplicate-file-detector/`
@@ -51,7 +53,7 @@ Single Maven project (per `plan.md` Structure Decision):
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
 - [X] T007 [P] Create `ScanLocation` model in `src/main/java/com/filedupedetector/model/ScanLocation.java` with fields `id` (long), `displayName` (String), `rootPath` (String, must be non-blank and unique), `type` (enum `LocationType { LOCAL, REMOVABLE, CLOUD }`), `lastScannedAt` (nullable Instant), `available` (boolean)
-- [X] T008 [P] Create `FileRecord` model in `src/main/java/com/filedupedetector/model/FileRecord.java` with fields `id` (long), `scanLocationId` (long), `relativePath` (String, unique together with `scanLocationId`), `sizeBytes` (long), `contentHash` (nullable String, hex SHA-256), `lastModifiedAt` (Instant), `status` (enum `FileStatus { PRESENT, MISSING, ERRORED }`), `lastScanSessionId` (nullable long), `lastSeenAt` (Instant)
+- [X] T008 [P] Create `FileRecord` model in `src/main/java/com/filedupedetector/model/FileRecord.java` with fields `id` (long), `scanLocationId` (long), `relativePath` (String, unique together with `scanLocationId`), `sizeBytes` (long), `contentHash` (nullable String, hex SHA-1), `lastModifiedAt` (Instant), `status` (enum `FileStatus { PRESENT, MISSING, ERRORED }`), `lastScanSessionId` (nullable long), `lastSeenAt` (Instant)
 - [X] T009 [P] Create `ScanSession` model in `src/main/java/com/filedupedetector/model/ScanSession.java` with fields `id` (long), `startedAt`/`endedAt` (Instant, nullable end), `scanLocationIds` (List<Long>), `filesProcessed`/`filesSkippedErrored`/`filesMissing` (int), `outcome` (enum `ScanOutcome { COMPLETED, INTERRUPTED }`)
 - [X] T010 [P] Create `DuplicateGroup` derived model in `src/main/java/com/filedupedetector/model/DuplicateGroup.java` with fields `sizeBytes` (long), `contentHash` (String), `members` (List<FileRecord>); only materialized with 2+ members per data-model.md
 - [X] T011 Create embedded DB schema in `src/main/resources/schema.sql`: tables `scan_location` (unique index on `root_path`), `file_record` (unique index on `(scan_location_id, relative_path)`, index on `(size_bytes, content_hash)`), `scan_session`, join table `scan_session_location`
@@ -69,19 +71,19 @@ Single Maven project (per `plan.md` Structure Decision):
 
 ## Phase 3: User Story 1 - Scan locations and find duplicates (Priority: P1) 🎯 MVP
 
-**Goal**: Scan one or more user-designated locations, compute size + SHA-256 hash per file, and group files into duplicate groups by exact (size, hash) match.
+**Goal**: Scan one or more user-designated locations, compute size + SHA-1 hash per file, and group files into duplicate groups by exact (size, hash) match.
 
 **Independent Test**: Point the tool at two or more folders (one pair of files with identical content/different names, plus unique files) and verify the resulting duplicate groups are correct per `quickstart.md` Validation Scenario 1.
 
 ### Implementation for User Story 1
 
 - [X] T019 [P] [US1] Implement `NioFileWalker` (implements `FileWalker`) in `src/main/java/com/filedupedetector/scan/NioFileWalker.java` using `Files.walkFileTree`: do not follow symlinks, catch `IOException` per file/directory and report via `FileVisitCallback.onError` instead of aborting the walk (FR-012, FR-014), detect non-regular/placeholder files and report via `onInaccessible`
-- [X] T020 [P] [US1] Implement `Sha256HashService` (implements `HashService`) in `src/main/java/com/filedupedetector/scan/Sha256HashService.java` using `java.security.MessageDigest` with a buffered `InputStream` (fixed-size chunk reads, never loading the whole file into memory)
+- [X] T020 [P] [US1] Implement `Sha1HashService` (implements `HashService`) in `src/main/java/com/filedupedetector/scan/Sha1HashService.java` using `java.security.MessageDigest` with a buffered `InputStream` (fixed-size chunk reads, never loading the whole file into memory)
 - [X] T021 [US1] Implement `DuplicateMatcher` in `src/main/java/com/filedupedetector/service/DuplicateMatcher.java`: given a list of `(path, sizeBytes)` pairs, group by `sizeBytes` first and return only the subset of paths that share a size with at least one other path (size pre-filter per research.md decision 4), to be passed on for hashing
-- [X] T022 [US1] Implement `ScanService` (per contracts) in `src/main/java/com/filedupedetector/service/ScanServiceImpl.java`: `scanAsync(locations, listener)` orchestrates `NioFileWalker` → `DuplicateMatcher` size pre-filter → `Sha256HashService` for candidates → `FileRecordRepository.upsert` for each file (status=PRESENT, contentHash set; status=ERRORED with null/previous hash for failures per FR-012); runs on a background thread (not the caller's thread) and invokes `ScanProgressListener` callbacks
+- [X] T022 [US1] Implement `ScanService` (per contracts) in `src/main/java/com/filedupedetector/service/ScanServiceImpl.java`: `scanAsync(locations, listener)` orchestrates `NioFileWalker` → `DuplicateMatcher` size pre-filter → `Sha1HashService` for candidates → `FileRecordRepository.upsert` for each file (status=PRESENT, contentHash set; status=ERRORED with null/previous hash for failures per FR-012); runs on a background thread (not the caller's thread) and invokes `ScanProgressListener` callbacks
 - [X] T023 [US1] Implement `DuplicateQueryService` (per contracts) in `src/main/java/com/filedupedetector/service/DuplicateQueryServiceImpl.java`: `getAllDuplicateGroups()` delegates to `FileRecordRepository.findDuplicateGroups()`; `getGroupMembers(key)` returns full `FileRecord` list (with full path = `ScanLocation.rootPath` + `FileRecord.relativePath`) for a given `(sizeBytes, contentHash)` key
 - [X] T024 [US1] Wire a minimal console entry point in `src/main/java/com/filedupedetector/Main.java`: accept one or more folder paths as CLI args, register them as `ScanLocation`s, run `ScanService.scanAsync` synchronously (blocking wait for this manual-test path), print resulting duplicate groups with full paths to stdout — serves as a smoke-test harness ahead of the GUI (Phase 5)
-- [X] T025 [P] [US1] Unit test `Sha256HashServiceTest` in `src/test/java/com/filedupedetector/scan/Sha256HashServiceTest.java`: verify identical-content files (different names) produce identical hashes; verify files differing by a single byte produce different hashes
+- [X] T025 [P] [US1] Unit test `Sha1HashServiceTest` in `src/test/java/com/filedupedetector/scan/Sha1HashServiceTest.java`: verify identical-content files (different names) produce identical hashes; verify files differing by a single byte produce different hashes
 - [X] T026 [P] [US1] Unit test `DuplicateMatcherTest` in `src/test/java/com/filedupedetector/service/DuplicateMatcherTest.java`: verify files with unique sizes are excluded from hashing candidates; verify files sharing a size are all included
 - [X] T027 [US1] Integration test `ScanServiceDuplicateDetectionTest` in `src/test/java/com/filedupedetector/service/ScanServiceDuplicateDetectionTest.java` using JUnit `@TempDir`: create two folders with one identical-content pair (different names) + one unique file per folder each; run `ScanService.scanAsync` against an in-memory/test H2 instance; assert exactly one duplicate group with 2 members and the unique files are absent from any group (covers acceptance scenarios 1–3 of User Story 1)
 
@@ -139,7 +141,7 @@ Single Maven project (per `plan.md` Structure Decision):
 - [X] T045 Review and harden error handling across `scan`/`persistence`/`service` packages: ensure every checked `IOException`/`SQLException` path results in a reported skipped/errored state (FR-012) rather than an uncaught exception reaching the EDT
 - [X] T046 [P] Add unit tests for edge cases in `src/test/java/com/filedupedetector/scan/NioFileWalkerEdgeCasesTest.java`: zero-byte files compared by hash, unreadable/locked file reported as errored without stopping the walk, symbolic links not followed
 - [X] T047 Run full `quickstart.md` validation manually (Scenarios 1–4) against the built JAR and record results/any deviations in `specs/001-duplicate-file-detector/quickstart.md` notes or a short validation log
-- [X] T048 Performance pass: verify re-scan of ~10k unchanged files meets the ≥80% time-reduction target (SC-002) using a disposable test dataset; tune buffered I/O chunk size in `Sha256HashService` if needed
+- [X] T048 Performance pass: verify re-scan of ~10k unchanged files meets the ≥80% time-reduction target (SC-002) using a disposable test dataset; tune buffered I/O chunk size in `Sha1HashService` if needed
 
 ---
 
@@ -182,10 +184,10 @@ Single Maven project (per `plan.md` Structure Decision):
 ```bash
 # Launch core US1 implementation pieces together (different files):
 Task: "Implement NioFileWalker in src/main/java/com/filedupedetector/scan/NioFileWalker.java"
-Task: "Implement Sha256HashService in src/main/java/com/filedupedetector/scan/Sha256HashService.java"
+Task: "Implement Sha1HashService in src/main/java/com/filedupedetector/scan/Sha1HashService.java"
 
 # Launch US1 unit tests together once implementations exist:
-Task: "Unit test Sha256HashServiceTest in src/test/java/com/filedupedetector/scan/Sha256HashServiceTest.java"
+Task: "Unit test Sha1HashServiceTest in src/test/java/com/filedupedetector/scan/Sha1HashServiceTest.java"
 Task: "Unit test DuplicateMatcherTest in src/test/java/com/filedupedetector/service/DuplicateMatcherTest.java"
 ```
 

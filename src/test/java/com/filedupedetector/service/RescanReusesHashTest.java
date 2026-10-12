@@ -11,7 +11,7 @@ import com.filedupedetector.persistence.JdbcScanLocationRepository;
 import com.filedupedetector.persistence.JdbcScanSessionRepository;
 import com.filedupedetector.scan.HashService;
 import com.filedupedetector.scan.NioFileWalker;
-import com.filedupedetector.scan.Sha256HashService;
+import com.filedupedetector.scan.Sha1HashService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -42,7 +42,7 @@ class RescanReusesHashTest {
 
         Path dbPath = tempDir.resolve("test-db").resolve("store");
         AtomicInteger hashCallCount = new AtomicInteger();
-        HashService countingHashService = new CountingHashService(new Sha256HashService(), hashCallCount);
+        HashService countingHashService = new CountingHashService(new Sha1HashService(), hashCallCount);
 
         try (JdbcConnectionManager connectionManager = new JdbcConnectionManager(dbPath)) {
             var scanLocationRepository = new JdbcScanLocationRepository(connectionManager);

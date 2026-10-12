@@ -10,9 +10,9 @@ import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class Sha256HashServiceTest {
+class Sha1HashServiceTest {
 
-    private final Sha256HashService hashService = new Sha256HashService();
+    private final Sha1HashService hashService = new Sha1HashService();
 
     @Test
     void identicalContentDifferentNamesProduceIdenticalHashes(@TempDir Path tempDir) throws IOException {
@@ -26,7 +26,7 @@ class Sha256HashServiceTest {
         String hash2 = hashService.computeHash(file2);
 
         assertThat(hash1).isEqualTo(hash2);
-        assertThat(hash1).hasSize(64); // SHA-256 hex digest length
+        assertThat(hash1).hasSize(40); // SHA-1 hex digest length
     }
 
     @Test
