@@ -1,7 +1,18 @@
 package com.filedupedetector;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+
+import com.filedupedetector.model.FileRecord;
 
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
@@ -134,9 +145,47 @@ public class FileScanCliMain {
 		}
 	}
 
+	private static final ObjectMapper EXPORT_MAPPER = new ObjectMapper()
+			.registerModule(new JavaTimeModule())
+			.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+			.enable(SerializationFeature.INDENT_OUTPUT);
+
 	private void export(String exportFile) {
 		List<ScanLocation> scanLocations = scanLocationRepository.findAll();
 		System.out.println("Exporting " + scanLocations.size() + " scan locations to " + exportFile);
+
+		Path targetPath = Paths.get(exportFile).toAbsolutePath().normalize();
+		try {
+			Path parentDir = targetPath.getParent();
+			if (parentDir != null) {
+				Files.createDirectories(parentDir);
+			}
+
+			List<Map<String, Object>> exportedLocations = scanLocations.stream()
+					.map(this::toExportMap)
+					.toList();
+			Map<String, Object> root = new LinkedHashMap<>();
+			root.put("scanLocations", exportedLocations);
+
+			EXPORT_MAPPER.writeValue(targetPath.toFile(), root);
+			System.out.println("Export complete: " + targetPath);
+		} catch (IOException e) {
+			throw new IllegalStateException("Failed to export scan data to " + exportFile, e);
+		}
+	}
+
+	private Map<String, Object> toExportMap(ScanLocation location) {
+		List<FileRecord> fileRecords = fileRecordRepository.findByLocation(location.getId());
+
+		Map<String, Object> map = new LinkedHashMap<>();
+		map.put("id", location.getId());
+		map.put("displayName", location.getDisplayName());
+		map.put("rootPath", location.getRootPath());
+		map.put("type", location.getType());
+		map.put("lastScannedAt", location.getLastScannedAt());
+		map.put("available", location.isAvailable());
+		map.put("fileRecords", fileRecords);
+		return map;
 	}
 
 
@@ -149,9 +198,10 @@ public class FileScanCliMain {
 
 	public static void main(String[] args) {
 		if (args.length == 0) {
-//			args = new String[] {"scan", "TestFolderCLI", "./specs"};
+//			args = new String[] {"scan", "TestFolderCLI3", "./specs"};
+//			args = new String[] {"scan", "TestFolderCLISpecify", "./.specify"};
 //			args = new String[] {"list-roots"};
-			args = new String[] {"export", "./export.json"};
+			args = new String[] {"export", "./output/export-specs-2d.json"};
 		}
 		if (args.length == 0) {
 			printUsage();
@@ -208,7 +258,7 @@ public class FileScanCliMain {
 				String folderPath = ns.getString("folderPath");
 				cliScanner.scanNewLocation(name, folderPath);
 				break;
-			case "exort":
+			case "export":
 				String exportFile = ns.getString("exportFile");
 				cliScanner.export(exportFile);
 				break;
