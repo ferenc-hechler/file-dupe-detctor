@@ -94,7 +94,7 @@ public final class Main {
             for (String arg : args) {
                 ScanLocation location = new ScanLocation();
                 location.setDisplayName(arg);
-                location.setRootPath(Path.of(arg).toAbsolutePath().toString());
+                location.setRootPathWithVolInfo(Path.of(arg).toAbsolutePath().toString());
                 location.setType(LocationType.LOCAL);
                 locations.add(scanLocationRepository.save(location));
             }

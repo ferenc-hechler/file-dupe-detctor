@@ -118,7 +118,7 @@ public final class MainWindow extends JFrame {
             var selectedDir = chooser.getSelectedFile();
             ScanLocation location = new ScanLocation();
             location.setDisplayName(selectedDir.getName());
-            location.setRootPath(selectedDir.getAbsolutePath());
+            location.setRootPathWithVolInfo(selectedDir.getAbsolutePath());
             location.setType(LocationType.LOCAL);
             scanLocationRepository.save(location);
             reloadTree();

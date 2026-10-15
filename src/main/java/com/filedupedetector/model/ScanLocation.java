@@ -1,5 +1,8 @@
 package com.filedupedetector.model;
 
+import com.filedupedetector.utils.VolInfo;
+
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Objects;
 
@@ -18,19 +21,27 @@ public final class ScanLocation {
     private long id;
     private String displayName;
     private String rootPath;
+    private String volName;
+    private String volType;
+    private long volSize;
+    private String volVSN;
     private LocationType type;
     private Instant lastScannedAt;
     private boolean available;
 
     public ScanLocation() {
         this.available = true;
+        this.volName = "?";
+        this.volType = "?";
+        this.volSize = -1;
+        this.volVSN = "?";
     }
 
     public ScanLocation(long id, String displayName, String rootPath, LocationType type,
                          Instant lastScannedAt, boolean available) {
         this.id = id;
         this.displayName = Objects.requireNonNull(displayName, "displayName must not be null");
-        this.rootPath = requireNonBlank(rootPath, "rootPath");
+        setRootPathWithVolInfo(rootPath);
         this.type = Objects.requireNonNull(type, "type must not be null");
         this.lastScannedAt = lastScannedAt;
         this.available = available;
@@ -63,8 +74,60 @@ public final class ScanLocation {
         return rootPath;
     }
 
-    public void setRootPath(String rootPath) {
+    public void setRootPathX(String rootPath) {
         this.rootPath = requireNonBlank(rootPath, "rootPath");
+    }
+    
+    public void setRootPathWithVolInfo(String rootPath) {
+        this.rootPath = requireNonBlank(rootPath, "rootPath");
+        populateVolumeInfo(this.rootPath);
+    }
+
+    private void populateVolumeInfo(String rootPathValue) {
+        try {
+            VolInfo info = new VolInfo(Path.of(rootPathValue));
+            this.volName = info.getVolName();
+            this.volType = info.getVolType();
+            this.volSize = info.getVolSize();
+            this.volVSN = info.getVolVSN();
+        } catch (RuntimeException e) {
+            this.volName = "?";
+            this.volType = "?";
+            this.volSize = -1;
+            this.volVSN = "?";
+        }
+    }
+
+    public String getVolName() {
+        return volName;
+    }
+
+    public void setVolName(String volName) {
+        this.volName = volName;
+    }
+
+    public String getVolType() {
+        return volType;
+    }
+
+    public void setVolType(String volType) {
+        this.volType = volType;
+    }
+
+    public long getVolSize() {
+        return volSize;
+    }
+
+    public void setVolSize(long volSize) {
+        this.volSize = volSize;
+    }
+
+    public String getVolVSN() {
+        return volVSN;
+    }
+
+    public void setVolVSN(String volVSN) {
+        this.volVSN = volVSN;
     }
 
     public LocationType getType() {
@@ -105,7 +168,7 @@ public final class ScanLocation {
 
     @Override
     public String toString() {
-        return "ScanLocation{id=%d, displayName='%s', rootPath='%s', type=%s, available=%s}"
-                .formatted(id, displayName, rootPath, type, available);
+        return "ScanLocation{id=%d, displayName='%s', rootPath='%s', volName='%s', volType='%s', volSize=%d, volVSN='%s', type=%s, available=%s}"
+                .formatted(id, displayName, rootPath, volName, volType, volSize, volVSN, type, available);
     }
 }

@@ -89,7 +89,7 @@ class RescanDetectsMissingFilesTest {
     private ScanLocation newLocation(String name, Path path) {
         ScanLocation location = new ScanLocation();
         location.setDisplayName(name);
-        location.setRootPath(path.toAbsolutePath().toString());
+        location.setRootPathWithVolInfo(path.toAbsolutePath().toString());
         location.setType(LocationType.LOCAL);
         return location;
     }

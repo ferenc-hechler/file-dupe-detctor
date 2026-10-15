@@ -1,6 +1,8 @@
 package com.filedupedetector;
 
 import java.io.IOException;
+import java.nio.file.FileStore;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -11,16 +13,7 @@ import java.util.Map;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-
 import com.filedupedetector.model.FileRecord;
-
-import net.sourceforge.argparse4j.ArgumentParsers;
-import net.sourceforge.argparse4j.inf.ArgumentParser;
-import net.sourceforge.argparse4j.inf.ArgumentParserException;
-import net.sourceforge.argparse4j.inf.Namespace;
-import net.sourceforge.argparse4j.inf.Subparser;
-import net.sourceforge.argparse4j.inf.Subparsers;
-
 import com.filedupedetector.model.ScanLocation;
 import com.filedupedetector.model.ScanLocation.LocationType;
 import com.filedupedetector.model.ScanSession;
@@ -36,6 +29,13 @@ import com.filedupedetector.service.DuplicateMatcher;
 import com.filedupedetector.service.ScanProgressListener;
 import com.filedupedetector.service.ScanService;
 import com.filedupedetector.service.ScanServiceImpl;
+
+import net.sourceforge.argparse4j.ArgumentParsers;
+import net.sourceforge.argparse4j.inf.ArgumentParser;
+import net.sourceforge.argparse4j.inf.ArgumentParserException;
+import net.sourceforge.argparse4j.inf.Namespace;
+import net.sourceforge.argparse4j.inf.Subparser;
+import net.sourceforge.argparse4j.inf.Subparsers;
 
 
 public class FileScanCliMain {
@@ -59,10 +59,48 @@ public class FileScanCliMain {
                 scanSessionRepository);
 	}
 	
+	record VolumeInfo(String volName, String volType, long volSize, String volVSN) {}
+	
+	private static String formatVSN(int vsnInt) {
+		String result = Integer.toHexString(vsnInt);
+		while (result.length()<8) { result= "0"+result; }
+		result= result.substring(0, 4)+"-"+result.substring(4);
+		return result;
+	}
+	
+	private String getVSN(FileStore store) {
+		try {
+			return formatVSN((Integer) store.getAttribute("volume:vsn"));
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	public VolumeInfo getVolumeInfo(Path path) {
+		VolumeInfo result = null;
+		Path root = path.getRoot();
+		String volLetter = root.toString().substring(0,1);
+		for (FileStore store: FileSystems.getDefault().getFileStores()) {
+			String storeString = store.toString();
+			if (storeString.indexOf("("+volLetter+":)") != -1) {
+				String volName = store.name();
+				String volType = store.type();
+				long volSize = -1;
+				try {
+					volSize = store.getTotalSpace();
+				} catch (IOException e) {}
+				String volVSN = getVSN(store);
+				result = new VolumeInfo(volName, volType, volSize, volVSN);
+			}
+		}
+		return result;
+	}
+	
 	public void addScanFolder(String name, String folderPath) {
 		ScanLocation location = new ScanLocation();
         location.setDisplayName(name);
-        location.setRootPath(Paths.get(folderPath).toAbsolutePath().normalize().toString());
+        Path rootPath = Paths.get(folderPath).toAbsolutePath().normalize();
+        location.setRootPathX(rootPath.toString());
         location.setType(LocationType.LOCAL);
         scanLocationRepository.save(location);		
 	}
@@ -181,6 +219,10 @@ public class FileScanCliMain {
 		map.put("id", location.getId());
 		map.put("displayName", location.getDisplayName());
 		map.put("rootPath", location.getRootPath());
+		map.put("volName", location.getVolName());
+		map.put("volType", location.getVolType());
+		map.put("volSize", location.getVolSize());
+		map.put("volVSN", location.getVolVSN());
 		map.put("type", location.getType());
 		map.put("lastScannedAt", location.getLastScannedAt());
 		map.put("available", location.isAvailable());

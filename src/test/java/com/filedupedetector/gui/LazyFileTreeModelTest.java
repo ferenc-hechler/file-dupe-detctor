@@ -94,7 +94,7 @@ class LazyFileTreeModelTest {
         ScanLocation location = new ScanLocation();
         location.setId(id);
         location.setDisplayName(name);
-        location.setRootPath(path);
+        location.setRootPathWithVolInfo(path);
         location.setType(LocationType.LOCAL);
         return location;
     }

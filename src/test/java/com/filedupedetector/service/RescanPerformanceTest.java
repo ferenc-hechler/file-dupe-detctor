@@ -61,7 +61,7 @@ class RescanPerformanceTest {
 
             ScanLocation location = new ScanLocation();
             location.setDisplayName("perf");
-            location.setRootPath(folder.toAbsolutePath().toString());
+            location.setRootPathWithVolInfo(folder.toAbsolutePath().toString());
             location.setType(LocationType.LOCAL);
             location = scanLocationRepository.save(location);
 

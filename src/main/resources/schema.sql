@@ -5,10 +5,19 @@ CREATE TABLE IF NOT EXISTS scan_location (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     display_name    VARCHAR(512)  NOT NULL,
     root_path       VARCHAR(2048) NOT NULL,
+    vol_name        VARCHAR(512)  NOT NULL DEFAULT '?',
+    vol_type        VARCHAR(128)  NOT NULL DEFAULT '?',
+    vol_size        BIGINT        NOT NULL DEFAULT -1,
+    vol_vsn         VARCHAR(64)   NOT NULL DEFAULT '?',
     type            VARCHAR(16)   NOT NULL,
     last_scanned_at TIMESTAMP     NULL,
     available       BOOLEAN       NOT NULL DEFAULT TRUE
 );
+
+ALTER TABLE scan_location ADD COLUMN IF NOT EXISTS vol_name VARCHAR(512) NOT NULL DEFAULT '?';
+ALTER TABLE scan_location ADD COLUMN IF NOT EXISTS vol_type VARCHAR(128) NOT NULL DEFAULT '?';
+ALTER TABLE scan_location ADD COLUMN IF NOT EXISTS vol_size BIGINT NOT NULL DEFAULT -1;
+ALTER TABLE scan_location ADD COLUMN IF NOT EXISTS vol_vsn VARCHAR(64) NOT NULL DEFAULT '?';
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_scan_location_root_path ON scan_location (root_path);
 
