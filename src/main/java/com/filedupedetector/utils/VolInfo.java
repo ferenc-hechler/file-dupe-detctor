@@ -66,6 +66,7 @@ public class VolInfo {
 		} catch (IOException | RuntimeException e) {
 			// Keep fallback values for unsupported/unavailable paths.
 		}
+		System.out.println("RETRIEVED VOLUME INFO: "+toString());
 	}
 
 	public String getVolName() {
@@ -84,4 +85,25 @@ public class VolInfo {
 		return volVSN;
 	}
 
+	@Override
+	public String toString() {
+		return "VOL[" + volVSN + "/" + volName + "/" + volType + "/" + readableFileSize(volSize) + "]";
+	}
+
+	private static String readableFileSize(long bytes) {
+		if (bytes < 0) {
+			return "?";
+		}
+		if (bytes < 1024) {
+			return bytes + "B";
+		}
+		if (bytes < 1024 * 1024) {
+			return String.format("%.1fKB", bytes / 1024.0);
+		}
+		if (bytes < 1024 * 1024 * 1024) {
+			return String.format("%.1fMB", bytes / (1024.0 * 1024.0));
+		}
+		return String.format("%.1fGB", bytes / (1024.0 * 1024.0 * 1024.0));
+	}
+	
 }

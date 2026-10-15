@@ -100,7 +100,7 @@ public class FileScanCliMain {
 		ScanLocation location = new ScanLocation();
         location.setDisplayName(name);
         Path rootPath = Paths.get(folderPath).toAbsolutePath().normalize();
-        location.setRootPathX(rootPath.toString());
+        location.setRootPathWithVolInfo(rootPath.toString());
         location.setType(LocationType.LOCAL);
         scanLocationRepository.save(location);		
 	}
@@ -243,7 +243,7 @@ public class FileScanCliMain {
 //			args = new String[] {"scan", "TestFolderCLI3", "./specs"};
 //			args = new String[] {"scan", "TestFolderCLISpecify", "./.specify"};
 //			args = new String[] {"list-roots"};
-			args = new String[] {"export", "./output/export-specs-2d.json"};
+			args = new String[] {"export", "./output/export-specs-3a.json"};
 		}
 		if (args.length == 0) {
 			printUsage();
