@@ -212,6 +212,85 @@ public class FileScanCliMain {
 		}
 	}
 
+	/**
+	 * Imports scan locations and file records from a JSON file created with the export action.
+	 * Existing locations (matched by display name) must have the same rootPath and volume info;
+	 * otherwise nothing is imported and an error is thrown.
+	 */
+	private void importFile(String importFile) {
+		Path source = Paths.get(importFile).toAbsolutePath().normalize();
+		com.fasterxml.jackson.databind.JsonNode root;
+		try {
+			root = EXPORT_MAPPER.readTree(source.toFile());
+		} catch (IOException e) {
+			throw new IllegalStateException("Failed to read import file " + source, e);
+		}
+		com.fasterxml.jackson.databind.JsonNode locationNodes = root == null ? null : root.get("scanLocations");
+		if (locationNodes == null || !locationNodes.isArray()) {
+			throw new IllegalStateException("Invalid import file " + source + ": missing 'scanLocations' array");
+		}
+
+		// Pass 1: parse and validate everything before changing the database.
+		List<ScanLocation> importedLocations = new java.util.ArrayList<>();
+		for (com.fasterxml.jackson.databind.JsonNode node : locationNodes) {
+			ScanLocation imported = toScanLocation(node);
+			scanLocationRepository.findAll().stream()
+					.filter(loc -> loc.getDisplayName().equals(imported.getDisplayName()))
+					.findFirst()
+					.ifPresent(existing -> verifySameLocation(existing, imported));
+			importedLocations.add(imported);
+		}
+
+		// Pass 2: persist locations and their file records.
+		int fileCount = 0;
+		for (int i = 0; i < importedLocations.size(); i++) {
+			ScanLocation imported = importedLocations.get(i);
+			ScanLocation target = scanLocationRepository.findAll().stream()
+					.filter(loc -> loc.getDisplayName().equals(imported.getDisplayName()))
+					.findFirst()
+					.orElseGet(() -> scanLocationRepository.save(imported));
+			for (com.fasterxml.jackson.databind.JsonNode recordNode : locationNodes.get(i).path("fileRecords")) {
+				FileRecord record = new FileRecord();
+				record.setScanLocationId(target.getId());
+				record.setRelativePath(requireText(recordNode, "relativePath"));
+				record.setSizeBytes(recordNode.path("sizeBytes").asLong());
+				record.setContentHash(recordNode.hasNonNull("contentHash") ? recordNode.get("contentHash").asText() : null);
+				record.setLastModifiedAt(java.time.Instant.parse(requireText(recordNode, "lastModifiedAt")));
+				record.setLastSeenAt(recordNode.hasNonNull("lastSeenAt")
+						? java.time.Instant.parse(recordNode.get("lastSeenAt").asText())
+						: java.time.Instant.now());
+				fileRecordRepository.upsert(record);
+				fileCount++;
+			}
+		}
+		System.out.println("Imported " + importedLocations.size() + " scan locations and " + fileCount
+				+ " file records from " + source);
+	}
+
+	private static ScanLocation toScanLocation(com.fasterxml.jackson.databind.JsonNode node) {
+		ScanLocation location = new ScanLocation();
+		location.setDisplayName(requireText(node, "displayName"));
+		location.setRootPathX(requireText(node, "rootPath"));
+		location.setVolName(requireText(node, "volName"));
+		location.setVolType(requireText(node, "volType"));
+		location.setVolSize(node.path("volSize").asLong(-1));
+		location.setVolVSN(requireText(node, "volVSN"));
+		location.setType(LocationType.valueOf(requireText(node, "type")));
+		location.setAvailable(node.path("available").asBoolean(true));
+		if (node.hasNonNull("lastScannedAt")) {
+			location.setLastScannedAt(java.time.Instant.parse(node.get("lastScannedAt").asText()));
+		}
+		return location;
+	}
+
+	private static String requireText(com.fasterxml.jackson.databind.JsonNode node, String field) {
+		com.fasterxml.jackson.databind.JsonNode value = node.get(field);
+		if (value == null || value.isNull() || value.asText().isBlank()) {
+			throw new IllegalStateException("Invalid import file: missing field '" + field + "' in " + node);
+		}
+		return value.asText();
+	}
+	
 	/** Jackson mixin: scanLocationId is redundant in the export, as file records are nested under their scan location. */
 	@com.fasterxml.jackson.annotation.JsonIgnoreProperties("scanLocationId")
 	private abstract static class FileRecordExportMixIn {}
@@ -270,6 +349,8 @@ public class FileScanCliMain {
 		System.out.println("Actions:");
 		System.out.println("  list-roots");
 		System.out.println("  scan <name> <folderPath>");
+		System.out.println("  export <exportFile>");
+		System.out.println("  import <importFile>");
 	}
 
 	public static void main(String[] args) {
@@ -309,6 +390,11 @@ public class FileScanCliMain {
 		exportParser.addArgument("exportFile")
 				.help("path of the json export file");
 
+		Subparser importParser = subparsers.addParser("import")
+				.help("import scanned files from a json file created with export");
+		importParser.addArgument("importFile")
+				.help("path of the json file to import");
+
 		Namespace ns;
 		try {
 			ns = parser.parseArgs(args);
@@ -338,6 +424,9 @@ public class FileScanCliMain {
 			case "export":
 				String exportFile = ns.getString("exportFile");
 				cliScanner.export(exportFile);
+				break;
+			case "import":
+				cliScanner.importFile(ns.getString("importFile"));
 				break;
 			default:
 				System.out.println("Unknown action: " + action);
