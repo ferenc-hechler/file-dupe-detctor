@@ -43,6 +43,7 @@ public final class ScanServiceImpl implements ScanService {
     private final FileRecordRepository fileRecordRepository;
     private final ScanLocationRepository scanLocationRepository;
     private final com.filedupedetector.persistence.ScanSessionRepository scanSessionRepository;
+    private final boolean alwaysHashNewFiles;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "scan-worker");
         t.setDaemon(true);
@@ -55,6 +56,18 @@ public final class ScanServiceImpl implements ScanService {
                             FileRecordRepository fileRecordRepository,
                             ScanLocationRepository scanLocationRepository,
                             com.filedupedetector.persistence.ScanSessionRepository scanSessionRepository) {
+        this(fileWalker, hashService, duplicateMatcher, fileRecordRepository, scanLocationRepository,
+                scanSessionRepository, false);
+    }
+
+    public ScanServiceImpl(FileWalker fileWalker,
+                            HashService hashService,
+                            DuplicateMatcher duplicateMatcher,
+                            FileRecordRepository fileRecordRepository,
+                            ScanLocationRepository scanLocationRepository,
+                            com.filedupedetector.persistence.ScanSessionRepository scanSessionRepository,
+                            boolean alwaysHashNewFiles) {
+        this.alwaysHashNewFiles = alwaysHashNewFiles;
         this.fileWalker = fileWalker;
         this.hashService = hashService;
         this.duplicateMatcher = duplicateMatcher;
@@ -103,8 +116,9 @@ public final class ScanServiceImpl implements ScanService {
         List<DuplicateMatcher.SizedPath> allFilesAcrossLocations = walked.stream()
                 .flatMap(w -> w.files().stream())
                 .toList();
-        Set<DuplicateMatcher.SizedPath> hashCandidates =
-                new HashSet<>(duplicateMatcher.filterHashCandidates(allFilesAcrossLocations));
+        Set<DuplicateMatcher.SizedPath> hashCandidates = alwaysHashNewFiles
+                ? new HashSet<>(allFilesAcrossLocations)
+                : new HashSet<>(duplicateMatcher.filterHashCandidates(allFilesAcrossLocations));
 
         // Phase 2: hash candidates and persist, per location.
         int totalProcessed = 0;

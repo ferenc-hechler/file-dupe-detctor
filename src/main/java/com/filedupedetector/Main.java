@@ -62,7 +62,8 @@ public final class Main {
                         new DuplicateMatcher(),
                         fileRecordRepository,
                         scanLocationRepository,
-                        scanSessionRepository);
+                        scanSessionRepository,
+                        true);
 
                 MainWindow window = new MainWindow(scanLocationRepository, fileRecordRepository, scanService);
                 window.setVisible(true);
@@ -105,7 +106,8 @@ public final class Main {
                     new DuplicateMatcher(),
                     fileRecordRepository,
                     scanLocationRepository,
-                    scanSessionRepository);
+                    scanSessionRepository,
+                    true);
 
             System.out.println("Scanning " + locations.size() + " location(s)...");
             scanService.scanBlocking(locations, new ScanProgressListener() {
@@ -138,4 +140,3 @@ public final class Main {
         }
     }
 }
-

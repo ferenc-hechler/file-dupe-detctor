@@ -56,7 +56,8 @@ public class FileScanCliMain {
                 new DuplicateMatcher(),
                 fileRecordRepository,
                 scanLocationRepository,
-                scanSessionRepository);
+                scanSessionRepository,
+                true);
 	}
 	
 	record VolumeInfo(String volName, String volType, long volSize, String volVSN) {}
@@ -268,6 +269,7 @@ public class FileScanCliMain {
 				.help("display name of the scan location");
 		scanParser.addArgument("folderPath")
 				.help("path of the folder to scan");
+
 
 		Subparser exportParser = subparsers.addParser("export")
 				.help("export scanned files into json file");

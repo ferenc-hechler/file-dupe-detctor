@@ -116,11 +116,6 @@ public final class FileRecord {
         this.lastSeenAt = lastSeenAt;
     }
 
-    /** Whether this record is currently eligible for duplicate matching (FR-003, FR-012). */
-    public boolean isEligibleForDuplicateMatching() {
-        return status == FileStatus.PRESENT && contentHash != null;
-    }
-
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
