@@ -99,13 +99,41 @@ public class FileScanCliMain {
 	
 	public void addScanFolder(String name, String folderPath) {
 		ScanLocation location = new ScanLocation();
-        location.setDisplayName(name);
-        Path rootPath = Paths.get(folderPath).toAbsolutePath().normalize();
-        location.setRootPathWithVolInfo(rootPath.toString());
-        location.setType(LocationType.LOCAL);
-        scanLocationRepository.save(location);		
+		location.setDisplayName(name);
+		Path rootPath = Paths.get(folderPath).toAbsolutePath().normalize();
+		location.setRootPathWithVolInfo(rootPath.toString());
+		location.setType(LocationType.LOCAL);
+
+		var existing = scanLocationRepository.findAll().stream()
+				.filter(loc -> loc.getDisplayName().equals(name))
+				.findFirst();
+		if (existing.isPresent()) {
+			// The location already exists: it must still describe the same folder on the same volume.
+			verifySameLocation(existing.get(), location);
+			return;
+		}
+		scanLocationRepository.save(location);
 	}
 
+	private static void verifySameLocation(ScanLocation existing, ScanLocation requested) {
+		List<String> differences = new java.util.ArrayList<>();
+		addDifference(differences, "rootPath", existing.getRootPath(), requested.getRootPath());
+		addDifference(differences, "volName", existing.getVolName(), requested.getVolName());
+		addDifference(differences, "volType", existing.getVolType(), requested.getVolType());
+		addDifference(differences, "volSize", existing.getVolSize(), requested.getVolSize());
+		addDifference(differences, "volVSN", existing.getVolVSN(), requested.getVolVSN());
+		if (!differences.isEmpty()) {
+			throw new IllegalStateException("Scan location '" + existing.getDisplayName()
+					+ "' already exists with different values: " + String.join("; ", differences));
+		}
+	}
+
+	private static void addDifference(List<String> differences, String field, Object stored, Object requested) {
+		if (!java.util.Objects.equals(stored, requested)) {
+			differences.add(field + " (stored: " + stored + ", requested: " + requested + ")");
+		}
+	}
+	
 	static class ScanStatus {
 		String status;
 		int total;
