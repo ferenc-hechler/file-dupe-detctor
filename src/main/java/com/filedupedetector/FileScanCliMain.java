@@ -355,12 +355,6 @@ public class FileScanCliMain {
 
 	public static void main(String[] args) {
 		if (args.length == 0) {
-//			args = new String[] {"scan", "TestFolderCLI3", "./specs"};
-//			args = new String[] {"scan", "TestFolderCLISpecify", "./.specify"};
-//			args = new String[] {"list-roots"};
-			args = new String[] {"export", "./output/export-specs-3a.json"};
-		}
-		if (args.length == 0) {
 			printUsage();
 			return;
 		}
