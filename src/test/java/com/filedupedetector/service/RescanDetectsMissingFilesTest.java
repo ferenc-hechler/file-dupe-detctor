@@ -1,7 +1,6 @@
 package com.filedupedetector.service;
 
 import com.filedupedetector.model.FileRecord;
-import com.filedupedetector.model.FileRecord.FileStatus;
 import com.filedupedetector.model.ScanLocation;
 import com.filedupedetector.model.ScanLocation.LocationType;
 import com.filedupedetector.model.ScanSession;
@@ -26,13 +25,13 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Covers User Story 2 acceptance scenario 3: deleting a previously scanned file results in it
- * being marked MISSING and excluded from current duplicate results (FR-008).
+ * Covers User Story 2 acceptance scenario 3: deleting a previously scanned file results in its
+ * record being deleted and excluded from current duplicate results (FR-008).
  */
 class RescanDetectsMissingFilesTest {
 
     @Test
-    void deletedFileIsMarkedMissingAndExcludedFromDuplicates(@TempDir Path tempDir) throws IOException, InterruptedException {
+    void deletedFileRecordIsRemovedAndExcludedFromDuplicates(@TempDir Path tempDir) throws IOException, InterruptedException {
         Path folderA = Files.createDirectories(tempDir.resolve("folderA"));
         Path folderB = Files.createDirectories(tempDir.resolve("folderB"));
         byte[] sharedContent = "content to be deleted later".getBytes(StandardCharsets.UTF_8);
@@ -60,8 +59,7 @@ class RescanDetectsMissingFilesTest {
             runScanAndWait(scanService, List.of(locationA, locationB));
 
             Optional<FileRecord> deletedRecord = fileRecordRepository.findByLocationAndPath(locationB.getId(), "two.dat");
-            assertThat(deletedRecord).isPresent();
-            assertThat(deletedRecord.get().getStatus()).isEqualTo(FileStatus.MISSING);
+            assertThat(deletedRecord).isEmpty();
 
             assertThat(new DuplicateQueryServiceImpl(fileRecordRepository).getAllDuplicateGroups()).isEmpty();
         }

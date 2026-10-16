@@ -28,11 +28,17 @@ CREATE TABLE IF NOT EXISTS file_record (
     size_bytes           BIGINT        NOT NULL,
     content_hash         VARCHAR(64)   NULL,
     last_modified_at     TIMESTAMP     NOT NULL,
-    status               VARCHAR(16)   NOT NULL,
-    last_scan_session_id BIGINT        NULL,
     last_seen_at         TIMESTAMP     NOT NULL,
     CONSTRAINT fk_file_record_location FOREIGN KEY (scan_location_id) REFERENCES scan_location (id)
 );
+
+-- Migration: the status and last_scan_session_id columns were removed.
+-- Status is re-added if missing so the cleanup below is valid on fresh and existing databases;
+-- rows that were not PRESENT are dropped, as only present files are stored now.
+ALTER TABLE file_record ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'PRESENT';
+DELETE FROM file_record WHERE status <> 'PRESENT';
+ALTER TABLE file_record DROP COLUMN IF EXISTS status;
+ALTER TABLE file_record DROP COLUMN IF EXISTS last_scan_session_id;
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_file_record_location_path ON file_record (scan_location_id, relative_path);
 CREATE INDEX IF NOT EXISTS ix_file_record_size_hash ON file_record (size_bytes, content_hash);

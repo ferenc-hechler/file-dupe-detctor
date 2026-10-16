@@ -1,7 +1,6 @@
 package com.filedupedetector.service;
 
 import com.filedupedetector.model.FileRecord;
-import com.filedupedetector.model.FileRecord.FileStatus;
 import com.filedupedetector.model.ScanLocation;
 import com.filedupedetector.persistence.FileRecordRepository;
 import com.filedupedetector.persistence.ScanLocationRepository;
@@ -129,7 +128,7 @@ public final class ScanServiceImpl implements ScanService {
                 continue;
             }
             try {
-                LocationScanResult result = persistOneLocation(w, hashCandidates, listener, session.getId());
+                LocationScanResult result = persistOneLocation(w, hashCandidates, listener);
                 totalProcessed += result.processed();
                 totalErrored += result.errored();
                 totalMissing += result.missing();
@@ -200,7 +199,7 @@ public final class ScanServiceImpl implements ScanService {
     }
 
     private LocationScanResult persistOneLocation(WalkedLocation w, Set<DuplicateMatcher.SizedPath> hashCandidates,
-                                                   ScanProgressListener listener, long sessionId) {
+                                                   ScanProgressListener listener) {
         ScanLocation location = w.location();
         Path root = w.root();
         Set<String> relativePathsSeen = new HashSet<>();
@@ -224,7 +223,6 @@ public final class ScanServiceImpl implements ScanService {
             } catch (IOException e) {
                 record.setLastModifiedAt(Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS));
             }
-            record.setLastScanSessionId(sessionId);
             record.setLastSeenAt(Instant.now());
 
             if (hashCandidates.contains(sized)) {
@@ -233,24 +231,24 @@ public final class ScanServiceImpl implements ScanService {
                 if (reusableHash != null) {
                     // FR-006: unchanged size/mtime since last scan -> reuse persisted hash, skip re-hashing.
                     record.setContentHash(reusableHash);
-                    record.setStatus(FileStatus.PRESENT);
                 } else {
                     try {
                         // FR-007: new file, or size/mtime changed since last scan -> (re)compute hash.
-                        String hash = hashService.computeHash(sized.path());
-                        record.setContentHash(hash);
-                        record.setStatus(FileStatus.PRESENT);
+                        record.setContentHash(hashService.computeHash(sized.path()));
                     } catch (IOException e) {
+                        // Unreadable files are not persisted; dropping the path from the "seen" set
+                        // also removes a stale record from an earlier scan.
                         log.debug("Failed to hash {}: {}", sized.path(), e.getMessage());
-                        record.setContentHash(null);
-                        record.setStatus(FileStatus.ERRORED);
+                        relativePathsSeen.remove(relativePath);
                         errored++;
+                        processed++;
+                        listener.onProgress(processed, w.files().size());
+                        continue;
                     }
                 }
             } else {
                 // Unique size among this scan: no need to hash (research.md decision 4).
                 record.setContentHash(null);
-                record.setStatus(FileStatus.PRESENT);
             }
 
             try {
@@ -264,17 +262,10 @@ public final class ScanServiceImpl implements ScanService {
             processed++;
             listener.onProgress(processed, w.files().size());
         }
-        // Errored/inaccessible paths are recorded as ERRORED FileRecords too, so FR-012 reporting
-        // (and GUI skipped/errored counts) can query them uniformly via the repository.
-        for (Path badPath : w.erroredPaths()) {
-            persistErroredPlaceholder(location, root, badPath, sessionId, relativePathsSeen);
-        }
-        for (Path badPath : w.inaccessiblePaths()) {
-            persistErroredPlaceholder(location, root, badPath, sessionId, relativePathsSeen);
-        }
 
-        // FR-008: any previously PRESENT record for this location not seen in this walk is now MISSING.
-        int missing = fileRecordRepository.markMissing(location.getId(), relativePathsSeen, sessionId);
+        // FR-008: any previously stored record for this location not seen in this walk (deleted,
+        // unreadable or inaccessible files) is removed.
+        int missing = fileRecordRepository.deleteMissing(location.getId(), relativePathsSeen);
 
         location.setLastScannedAt(Instant.now());
         scanLocationRepository.save(location);
@@ -283,16 +274,13 @@ public final class ScanServiceImpl implements ScanService {
     }
 
     /**
-     * Returns the previously persisted content hash if an existing {@code PRESENT} record for
-     * this path has an unchanged size and last-modified timestamp (FR-006); otherwise {@code null}
-     * to signal that the hash must be (re)computed (FR-007). A record that was previously
-     * {@code MISSING} is never trusted for reuse, since its hash cannot be trusted across an
-     * absence (data-model.md FileRecord state transitions).
+     * Returns the previously persisted content hash if an existing record for this path has an
+     * unchanged size and last-modified timestamp (FR-006); otherwise {@code null} to signal that
+     * the hash must be (re)computed (FR-007).
      */
     private String findReusableHash(long scanLocationId, String relativePath, long currentSize,
                                      Instant currentLastModified) {
         return fileRecordRepository.findByLocationAndPath(scanLocationId, relativePath)
-                .filter(existing -> existing.getStatus() == FileStatus.PRESENT)
                 .filter(existing -> existing.getContentHash() != null)
                 .filter(existing -> existing.getSizeBytes() == currentSize)
                 .filter(existing -> existing.getLastModifiedAt() != null
@@ -300,29 +288,5 @@ public final class ScanServiceImpl implements ScanService {
                                 .equals(currentLastModified.truncatedTo(java.time.temporal.ChronoUnit.MILLIS)))
                 .map(FileRecord::getContentHash)
                 .orElse(null);
-    }
-
-
-
-    private void persistErroredPlaceholder(ScanLocation location, Path root, Path badPath, long sessionId,
-                                            Set<String> relativePathsSeen) {
-        try {
-            String relativePath = root.relativize(badPath).toString();
-            relativePathsSeen.add(relativePath);
-            FileRecord record = fileRecordRepository
-                    .findByLocationAndPath(location.getId(), relativePath)
-                    .orElseGet(FileRecord::new);
-            record.setScanLocationId(location.getId());
-            record.setRelativePath(relativePath);
-            record.setStatus(FileStatus.ERRORED);
-            record.setLastScanSessionId(sessionId);
-            record.setLastSeenAt(Instant.now());
-            if (record.getLastModifiedAt() == null) {
-                record.setLastModifiedAt(Instant.now());
-            }
-            fileRecordRepository.upsert(record);
-        } catch (RuntimeException e) {
-            log.warn("Could not persist errored placeholder for {}: {}", badPath, e.getMessage());
-        }
     }
 }

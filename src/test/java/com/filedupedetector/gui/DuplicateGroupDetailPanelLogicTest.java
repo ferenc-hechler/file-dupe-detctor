@@ -3,7 +3,6 @@ package com.filedupedetector.gui;
 import com.filedupedetector.model.DuplicateGroup;
 import com.filedupedetector.model.DuplicateGroup.DuplicateGroupKey;
 import com.filedupedetector.model.FileRecord;
-import com.filedupedetector.model.FileRecord.FileStatus;
 import com.filedupedetector.model.ScanLocation;
 import com.filedupedetector.model.ScanLocation.LocationType;
 import com.filedupedetector.service.DuplicateQueryService;
@@ -84,7 +83,6 @@ class DuplicateGroupDetailPanelLogicTest {
         record.setSizeBytes(size);
         record.setContentHash(hash);
         record.setLastModifiedAt(Instant.now());
-        record.setStatus(FileStatus.PRESENT);
         record.setLastSeenAt(Instant.now());
         return record;
     }

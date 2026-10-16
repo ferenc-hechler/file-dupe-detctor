@@ -1,7 +1,6 @@
 package com.filedupedetector.gui;
 
 import com.filedupedetector.model.FileRecord;
-import com.filedupedetector.model.FileRecord.FileStatus;
 import com.filedupedetector.model.ScanLocation;
 import com.filedupedetector.model.ScanLocation.LocationType;
 import com.filedupedetector.persistence.FileRecordRepository;
@@ -106,7 +105,6 @@ class LazyFileTreeModelTest {
         record.setSizeBytes(size);
         record.setContentHash(null);
         record.setLastModifiedAt(Instant.now());
-        record.setStatus(FileStatus.PRESENT);
         record.setLastSeenAt(Instant.now());
         return record;
     }
@@ -125,17 +123,12 @@ class LazyFileTreeModelTest {
         }
 
         @Override
-        public int markMissing(long scanLocationId, java.util.Set<String> relativePathsSeen, long scanSessionId) {
+        public int deleteMissing(long scanLocationId, java.util.Set<String> relativePathsSeen) {
             return 0;
         }
 
         @Override
         public List<com.filedupedetector.model.DuplicateGroup> findDuplicateGroups() {
-            return List.of();
-        }
-
-        @Override
-        public List<FileRecord> findErroredBySession(long scanSessionId) {
             return List.of();
         }
 

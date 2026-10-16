@@ -2,7 +2,6 @@ package com.filedupedetector.persistence;
 
 import com.filedupedetector.model.DuplicateGroup;
 import com.filedupedetector.model.FileRecord;
-import com.filedupedetector.model.FileRecord.FileStatus;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -11,13 +10,14 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
 public final class JdbcFileRecordRepository implements FileRecordRepository {
+
+    private static final String SELECT_COLUMNS = "SELECT id, scan_location_id, relative_path, size_bytes, "
+            + "content_hash, last_modified_at, last_seen_at FROM file_record ";
 
     private final JdbcConnectionManager connectionManager;
 
@@ -27,9 +27,7 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
 
     @Override
     public Optional<FileRecord> findByLocationAndPath(long scanLocationId, String relativePath) {
-        String sql = "SELECT id, scan_location_id, relative_path, size_bytes, content_hash, "
-                + "last_modified_at, status, last_scan_session_id, last_seen_at "
-                + "FROM file_record WHERE scan_location_id = ? AND relative_path = ?";
+        String sql = SELECT_COLUMNS + "WHERE scan_location_id = ? AND relative_path = ?";
         try (Connection conn = connectionManager.openConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, scanLocationId);
@@ -75,7 +73,7 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
 
     private void insertNew(Connection conn, FileRecord record) throws SQLException {
         String sql = "INSERT INTO file_record (scan_location_id, relative_path, size_bytes, content_hash, "
-                + "last_modified_at, status, last_scan_session_id, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+                + "last_modified_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             bindCommonFields(ps, record, 1);
             ps.executeUpdate();
@@ -89,19 +87,13 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
 
     private void updateExisting(Connection conn, FileRecord record) throws SQLException {
         String sql = "UPDATE file_record SET size_bytes = ?, content_hash = ?, last_modified_at = ?, "
-                + "status = ?, last_scan_session_id = ?, last_seen_at = ? WHERE id = ?";
+                + "last_seen_at = ? WHERE id = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, record.getSizeBytes());
             ps.setString(2, record.getContentHash());
             ps.setTimestamp(3, Timestamp.from(record.getLastModifiedAt()));
-            ps.setString(4, record.getStatus().name());
-            if (record.getLastScanSessionId() != null) {
-                ps.setLong(5, record.getLastScanSessionId());
-            } else {
-                ps.setNull(5, java.sql.Types.BIGINT);
-            }
-            ps.setTimestamp(6, Timestamp.from(record.getLastSeenAt()));
-            ps.setLong(7, record.getId());
+            ps.setTimestamp(4, Timestamp.from(record.getLastSeenAt()));
+            ps.setLong(5, record.getId());
             ps.executeUpdate();
         }
     }
@@ -113,70 +105,56 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
         ps.setLong(i++, record.getSizeBytes());
         ps.setString(i++, record.getContentHash());
         ps.setTimestamp(i++, Timestamp.from(record.getLastModifiedAt()));
-        ps.setString(i++, record.getStatus().name());
-        if (record.getLastScanSessionId() != null) {
-            ps.setLong(i++, record.getLastScanSessionId());
-        } else {
-            ps.setNull(i++, java.sql.Types.BIGINT);
-        }
         ps.setTimestamp(i, Timestamp.from(record.getLastSeenAt()));
     }
 
     @Override
-    public int markMissing(long scanLocationId, Set<String> relativePathsSeen, long scanSessionId) {
-        String selectSql = "SELECT id, relative_path FROM file_record WHERE scan_location_id = ? AND status = ?";
-        String updateSql = "UPDATE file_record SET status = ?, last_scan_session_id = ? WHERE id = ?";
+    public int deleteMissing(long scanLocationId, Set<String> relativePathsSeen) {
+        String selectSql = "SELECT id, relative_path FROM file_record WHERE scan_location_id = ?";
+        String deleteSql = "DELETE FROM file_record WHERE id = ?";
         try (Connection conn = connectionManager.openConnection()) {
-            List<Long> idsToMarkMissing = new ArrayList<>();
+            List<Long> idsToDelete = new ArrayList<>();
             try (PreparedStatement select = conn.prepareStatement(selectSql)) {
                 select.setLong(1, scanLocationId);
-                select.setString(2, FileStatus.PRESENT.name());
                 try (ResultSet rs = select.executeQuery()) {
                     while (rs.next()) {
                         String relativePath = rs.getString("relative_path");
                         if (!relativePathsSeen.contains(relativePath)) {
-                            idsToMarkMissing.add(rs.getLong("id"));
+                            idsToDelete.add(rs.getLong("id"));
                         }
                     }
                 }
             }
-            try (PreparedStatement update = conn.prepareStatement(updateSql)) {
-                for (Long id : idsToMarkMissing) {
-                    update.setString(1, FileStatus.MISSING.name());
-                    update.setLong(2, scanSessionId);
-                    update.setLong(3, id);
-                    update.addBatch();
-                }
-                if (!idsToMarkMissing.isEmpty()) {
-                    update.executeBatch();
+            if (!idsToDelete.isEmpty()) {
+                try (PreparedStatement delete = conn.prepareStatement(deleteSql)) {
+                    for (Long id : idsToDelete) {
+                        delete.setLong(1, id);
+                        delete.addBatch();
+                    }
+                    delete.executeBatch();
                 }
             }
-            return idsToMarkMissing.size();
+            return idsToDelete.size();
         } catch (SQLException e) {
-            throw new IllegalStateException("Failed to mark missing FileRecords for location=" + scanLocationId, e);
+            throw new IllegalStateException("Failed to delete missing FileRecords for location=" + scanLocationId, e);
         }
     }
 
     @Override
     public List<DuplicateGroup> findDuplicateGroups() {
         String groupSql = "SELECT size_bytes, content_hash FROM file_record "
-                + "WHERE status = ? AND content_hash IS NOT NULL "
+                + "WHERE content_hash IS NOT NULL "
                 + "GROUP BY size_bytes, content_hash HAVING COUNT(*) > 1";
-        String membersSql = "SELECT id, scan_location_id, relative_path, size_bytes, content_hash, "
-                + "last_modified_at, status, last_scan_session_id, last_seen_at "
-                + "FROM file_record WHERE status = ? AND size_bytes = ? AND content_hash = ?";
+        String membersSql = SELECT_COLUMNS + "WHERE size_bytes = ? AND content_hash = ?";
         List<DuplicateGroup> groups = new ArrayList<>();
         try (Connection conn = connectionManager.openConnection()) {
-            Map<Long, String> groupKeys = new LinkedHashMap<>();
             List<long[]> sizeHashPairs = new ArrayList<>();
             List<String> hashes = new ArrayList<>();
-            try (PreparedStatement ps = conn.prepareStatement(groupSql)) {
-                ps.setString(1, FileStatus.PRESENT.name());
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        sizeHashPairs.add(new long[]{rs.getLong("size_bytes")});
-                        hashes.add(rs.getString("content_hash"));
-                    }
+            try (PreparedStatement ps = conn.prepareStatement(groupSql);
+                 ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    sizeHashPairs.add(new long[]{rs.getLong("size_bytes")});
+                    hashes.add(rs.getString("content_hash"));
                 }
             }
             for (int i = 0; i < sizeHashPairs.size(); i++) {
@@ -184,9 +162,8 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
                 String hash = hashes.get(i);
                 List<FileRecord> members = new ArrayList<>();
                 try (PreparedStatement ps = conn.prepareStatement(membersSql)) {
-                    ps.setString(1, FileStatus.PRESENT.name());
-                    ps.setLong(2, size);
-                    ps.setString(3, hash);
+                    ps.setLong(1, size);
+                    ps.setString(2, hash);
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
                             members.add(mapRow(rs));
@@ -204,31 +181,8 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
     }
 
     @Override
-    public List<FileRecord> findErroredBySession(long scanSessionId) {
-        String sql = "SELECT id, scan_location_id, relative_path, size_bytes, content_hash, "
-                + "last_modified_at, status, last_scan_session_id, last_seen_at "
-                + "FROM file_record WHERE last_scan_session_id = ? AND status = ?";
-        List<FileRecord> result = new ArrayList<>();
-        try (Connection conn = connectionManager.openConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setLong(1, scanSessionId);
-            ps.setString(2, FileStatus.ERRORED.name());
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.add(mapRow(rs));
-                }
-            }
-            return result;
-        } catch (SQLException e) {
-            throw new IllegalStateException("Failed to load errored FileRecords for session=" + scanSessionId, e);
-        }
-    }
-
-    @Override
     public List<FileRecord> findByLocation(long scanLocationId) {
-        String sql = "SELECT id, scan_location_id, relative_path, size_bytes, content_hash, "
-                + "last_modified_at, status, last_scan_session_id, last_seen_at "
-                + "FROM file_record WHERE scan_location_id = ?";
+        String sql = SELECT_COLUMNS + "WHERE scan_location_id = ?";
         List<FileRecord> result = new ArrayList<>();
         try (Connection conn = connectionManager.openConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -253,9 +207,6 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
         record.setContentHash(rs.getString("content_hash"));
         Timestamp lastModified = rs.getTimestamp("last_modified_at");
         record.setLastModifiedAt(lastModified == null ? null : lastModified.toInstant());
-        record.setStatus(FileStatus.valueOf(rs.getString("status")));
-        long sessionId = rs.getLong("last_scan_session_id");
-        record.setLastScanSessionId(rs.wasNull() ? null : sessionId);
         Timestamp lastSeen = rs.getTimestamp("last_seen_at");
         record.setLastSeenAt(lastSeen == null ? null : lastSeen.toInstant());
         return record;

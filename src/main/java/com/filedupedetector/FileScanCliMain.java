@@ -184,8 +184,13 @@ public class FileScanCliMain {
 		}
 	}
 
+	/** Jackson mixin: scanLocationId is redundant in the export, as file records are nested under their scan location. */
+	@com.fasterxml.jackson.annotation.JsonIgnoreProperties("scanLocationId")
+	private abstract static class FileRecordExportMixIn {}
+
 	private static final ObjectMapper EXPORT_MAPPER = new ObjectMapper()
 			.registerModule(new JavaTimeModule())
+			.addMixIn(FileRecord.class, FileRecordExportMixIn.class)
 			.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 			.enable(SerializationFeature.INDENT_OUTPUT);
 

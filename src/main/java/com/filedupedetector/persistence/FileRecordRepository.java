@@ -9,7 +9,8 @@ import java.util.Set;
 
 /**
  * Repository for {@link FileRecord} persistence and duplicate-group derivation
- * (contracts/internal-module-contracts.md).
+ * (contracts/internal-module-contracts.md). Only files that are present and readable
+ * are persisted.
  */
 public interface FileRecordRepository {
 
@@ -19,17 +20,15 @@ public interface FileRecordRepository {
     FileRecord upsert(FileRecord record);
 
     /**
-     * Marks any previously {@code PRESENT} record for the given location whose relativePath
-     * is not in {@code relativePathsSeen} as {@code MISSING} (FR-008).
+     * Deletes any record of the given location whose relativePath is not in
+     * {@code relativePathsSeen}, i.e. files that no longer exist (FR-008).
      *
-     * @return the number of records newly marked as {@code MISSING}
+     * @return the number of deleted records
      */
-    int markMissing(long scanLocationId, Set<String> relativePathsSeen, long scanSessionId);
+    int deleteMissing(long scanLocationId, Set<String> relativePathsSeen);
 
-    /** PRESENT + non-null hash, grouped by (size, hash), having count > 1 (FR-003/FR-004). */
+    /** Records with a non-null hash, grouped by (size, hash), having count > 1 (FR-003/FR-004). */
     List<DuplicateGroup> findDuplicateGroups();
-
-    List<FileRecord> findErroredBySession(long scanSessionId);
 
     List<FileRecord> findByLocation(long scanLocationId);
 }
