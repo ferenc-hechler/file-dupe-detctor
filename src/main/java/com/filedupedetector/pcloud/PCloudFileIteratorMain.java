@@ -30,23 +30,7 @@ public class PCloudFileIteratorMain {
     	
     public void listFiles() {
         try {
-            long targetFolderId = RemoteFolder.ROOT_FOLDER_ID; // oder eine beliebige ID
-            
-            System.out.println("Versuche rekursiven Laden via SDK (Ansatz 1)...");
-            try {
-                // Versuche den schnellen nativen Weg
-                RemoteFolder rootFolder = apiClient.listFolder(targetFolderId, true).execute();
-                printFolderContentsRecursive(rootFolder, 0);
-                
-            } catch (IOException | RuntimeException | ApiError e) {
-                // Prüfen, ob es sich um den Fehler 1101 handelt (oder pauschal als Fallback)
-                System.err.println("Natürliche Rekursion fehlgeschlagen (Vermutlich Fehler 1101 'Invalid Request').");
-                System.err.println("Wechsle automatisch zum stabilen manuellen Durchlauf (Ansatz 2)...");
-                
-                // Fallback auf manuelle Rekursion
-                listRecursivelyManual(targetFolderId, 0);
-            }
-
+            listRecursively(RemoteFolder.ROOT_FOLDER_ID, 0);
         } finally {
         	PCloudApiClient.shutdownApiClient();
         }
@@ -59,11 +43,27 @@ public class PCloudFileIteratorMain {
         if (folder.children() != null) {
             for (RemoteEntry entry : folder.children()) {
                 if (entry.isFile()) {
-                    System.out.println(indent + " - [Datei] " + entry.name());
+                	RemoteFile file = entry.asFile();
+                    System.out.println(indent + " - [Datei] " + file.name());
                 } else if (entry.isFolder()) {
                     printFolderContentsRecursive((RemoteFolder) entry, depth + 1);
                 }
             }
+        }
+    }
+
+    private void listRecursively(long folderId, int depth) {
+        try {
+            // Versuche den schnellen nativen Weg
+            RemoteFolder folder = apiClient.listFolder(folderId, true).execute();
+            printFolderContentsRecursive(folder, depth);
+            
+        } catch (IOException | RuntimeException | ApiError e) {
+        	if ((e instanceof ApiError) && (((ApiError) e).errorCode() == 1101)) {
+                listRecursivelyManual(folderId, depth);
+			} else {
+				System.err.println("API-Fehler beim nativen rekursiven Aufruf: " + e.getMessage());
+        	}
         }
     }
 
@@ -78,12 +78,12 @@ public class PCloudFileIteratorMain {
 	        if (folder.children() != null) {
 	            for (RemoteEntry entry : folder.children()) {
 	                if (entry.isFile()) {
-	                    RemoteFile file = (RemoteFile) entry;
+	                    RemoteFile file = entry.asFile();
 	                    System.out.println(indent + " - [Datei] " + file.name() + " (" + file.size() + " Bytes)");
 	                } else if (entry.isFolder()) {
 	                    // Rekursiver Schritt für die Unterordner-ID
-	                	RemoteFolder subFolder = (RemoteFolder) entry;
-	                    listRecursivelyManual(subFolder.folderId(), depth + 1);
+	                	RemoteFolder subFolder = entry.asFolder();
+	                    listRecursively(subFolder.folderId(), depth + 1);
 	                }
 	            }
 			} 
