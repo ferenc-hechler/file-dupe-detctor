@@ -16,6 +16,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.filedupedetector.model.FileRecord;
 import com.filedupedetector.model.ScanLocation;
 import com.filedupedetector.model.ScanLocation.LocationType;
+import com.filedupedetector.pcloud.PCloudApiClient;
 import com.filedupedetector.model.ScanSession;
 import com.filedupedetector.persistence.FileRecordRepository;
 import com.filedupedetector.persistence.JdbcConnectionManager;
@@ -40,6 +41,10 @@ import net.sourceforge.argparse4j.inf.Subparsers;
 
 public class FileScanCliMain {
 
+	{{
+		PCloudApiClient.setConfigFilename("~/.env-pcloud-ro-dev");
+	}}
+	
 	ScanLocationRepository scanLocationRepository;
 	FileRecordRepository fileRecordRepository;
     ScanService scanService;
@@ -101,8 +106,26 @@ public class FileScanCliMain {
 		ScanLocation location = new ScanLocation();
 		location.setDisplayName(name);
 		Path rootPath = Paths.get(folderPath).toAbsolutePath().normalize();
-		location.setRootPathWithVolInfo(rootPath.toString());
 		location.setType(LocationType.LOCAL);
+		location.setRootPathWithVolInfo(rootPath.toString());
+
+		var existing = scanLocationRepository.findAll().stream()
+				.filter(loc -> loc.getDisplayName().equals(name))
+				.findFirst();
+		if (existing.isPresent()) {
+			// The location already exists: it must still describe the same folder on the same volume.
+			verifySameLocation(existing.get(), location);
+			return;
+		}
+		scanLocationRepository.save(location);
+	}
+
+	public void addPCloudScanFolder(String name, String pcloudPath) {
+		ScanLocation location = new ScanLocation();
+		location.setDisplayName(name);
+		String rootPath = "/"+pcloudPath.replaceAll("^/", "").replaceAll("/$", "");
+		location.setType(LocationType.PCLOUD);
+		location.setRootPathWithPCloudInfo(rootPath);
 
 		var existing = scanLocationRepository.findAll().stream()
 				.filter(loc -> loc.getDisplayName().equals(name))
@@ -196,6 +219,25 @@ public class FileScanCliMain {
 	public void scanNewLocation(String name, String folderPath) {
 		addScanFolder(name, folderPath);
 		scanLocation(name);
+	}
+
+	public void scanPCloudLocation(String name) {
+		List<ScanLocation> locations = scanLocationRepository.findAll();
+        List<ScanLocation> locationsToScan = locations.stream()
+				.filter(loc -> loc.getDisplayName().equals(name))
+				.toList();
+        for (ScanLocation loc : locationsToScan) {
+			if (loc.getType() != LocationType.PCLOUD) {
+				throw new IllegalStateException("Scan location '" + name + "' is not a pCloud location: " + loc.getType());
+			}
+			System.out.println("Scanning pCloud location '" + name + "' at " + loc.getRootPath());
+		}
+	}
+	
+	public void scanNewPCloudLocation(String name, String pcloudPath) {
+		pcloudPath = pcloudPath.replaceAll("^/", "").replaceAll("/$", "");
+		addPCloudScanFolder(name, pcloudPath);
+		scanPCloudLocation(name);
 	}
 
 	public List<String> getLocationNames() {
@@ -349,6 +391,7 @@ public class FileScanCliMain {
 		System.out.println("Actions:");
 		System.out.println("  list-roots");
 		System.out.println("  scan <name> <folderPath>");
+		System.out.println("  scanpcloud <name> <pcloudPath>");
 		System.out.println("  export <exportFile>");
 		System.out.println("  import <importFile>");
 	}
@@ -377,6 +420,13 @@ public class FileScanCliMain {
 				.help("display name of the scan location");
 		scanParser.addArgument("folderPath")
 				.help("path of the folder to scan");
+
+		Subparser scanpcloudParser = subparsers.addParser("scanpcloud")
+				.help("add (if new) and scan a pcloud folder");
+		scanpcloudParser.addArgument("name")
+				.help("display name of the scan location");
+		scanpcloudParser.addArgument("pcloudPath")
+				.help("path of the cloud folder to scan");
 
 
 		Subparser exportParser = subparsers.addParser("export")
@@ -410,11 +460,18 @@ public class FileScanCliMain {
 			case "list-roots":
 				cliScanner.listRoots();
 				break;
-			case "scan":
+			case "scan": {
 				String name = ns.getString("name");
 				String folderPath = ns.getString("folderPath");
 				cliScanner.scanNewLocation(name, folderPath);
 				break;
+			}
+			case "scanpcloud": {
+				String name = ns.getString("name");
+				String pcloudPath = ns.getString("pcloudPath");
+				cliScanner.scanNewPCloudLocation(name, pcloudPath);
+				break;
+			}
 			case "export":
 				String exportFile = ns.getString("exportFile");
 				cliScanner.export(exportFile);

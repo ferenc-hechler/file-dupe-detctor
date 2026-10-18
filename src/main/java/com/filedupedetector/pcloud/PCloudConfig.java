@@ -24,6 +24,7 @@ public class PCloudConfig {
 		DEFAULT_PCLOUD_CONFIG_FILENAME = configFilename;
 	}
 
+	private String pcloudEnv;
 	private String clientId;
 	private String encClientSecret;
 	private String encAccessToken;
@@ -32,7 +33,6 @@ public class PCloudConfig {
 
 	public PCloudConfig() {
 		this(System.getenv("PCLOUD_CONFIG_FILENAME"));
-		
 	}
 
 	public PCloudConfig(String propertiesFile) {
@@ -61,11 +61,16 @@ public class PCloudConfig {
 				System.exit(2);
 			}
 			apiHost = envProps.getProperty("API_HOST").trim();
+			pcloudEnv = envProps.getProperty("PCLOUD_ENV", "").trim();
 		} catch (Exception e) {
 			throw new RuntimeException("error reding config file '" + propertiesFile + "'", e);
 		}
 	}
 
+	public String getPCloudEnv() {
+		return pcloudEnv;
+	}
+	
 	public String getClientId() {
 		return clientId;
 	}

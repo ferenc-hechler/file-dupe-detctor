@@ -1,5 +1,6 @@
 package com.filedupedetector.model;
 
+import com.filedupedetector.pcloud.PCloudApiClient;
 import com.filedupedetector.utils.VolInfo;
 
 import java.nio.file.Path;
@@ -15,7 +16,7 @@ public final class ScanLocation {
     public enum LocationType {
         LOCAL,
         REMOVABLE,
-        CLOUD
+        PCLOUD
     }
 
     private long id;
@@ -83,10 +84,15 @@ public final class ScanLocation {
         populateVolumeInfo(this.rootPath);
     }
 
+    public void setRootPathWithPCloudInfo(String rootPath) {
+        this.rootPath = requireNonBlank(rootPath, "rootPath");
+        populatePCloudVolumeInfo(this.rootPath);
+    }    
+    
     private void populateVolumeInfo(String rootPathValue) {
         try {
-            VolInfo info = new VolInfo(Path.of(rootPathValue));
-            this.volName = info.getVolName();
+        	VolInfo info = new VolInfo(Path.of(rootPathValue));
+            this.volName = PCloudApiClient.getPCloudEnv();
             this.volType = info.getVolType();
             this.volSize = info.getVolSize();
             this.volVSN = info.getVolVSN();
@@ -95,6 +101,23 @@ public final class ScanLocation {
             this.volType = "?";
             this.volSize = -1;
             this.volVSN = "?";
+        }
+    }
+
+    private void populatePCloudVolumeInfo(String rootPathValue) {
+        try {
+        	this.volName = PCloudApiClient.getPCloudEnv();
+            if (this.volName == null || this.volName.isBlank()) {
+				this.volName = PCloudApiClient.getUserInfo().email();
+			}
+            this.volType = PCloudApiClient.getAPIHost().replace(".pcloud.com", "");
+            this.volSize = PCloudApiClient.getUserInfo().totalQuota();
+            this.volVSN = Long.toHexString(PCloudApiClient.getUserInfo().userId());
+        } catch (RuntimeException e) {
+            this.volName = "pcloud?";
+            this.volType = "pcloud?";
+            this.volSize = -2;
+            this.volVSN = "pcloud?";
         }
     }
 
