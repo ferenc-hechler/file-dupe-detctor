@@ -2,9 +2,11 @@ package com.filedupedetector.pcloud;
 
 
 import java.io.IOException;
+import java.util.Map;
 
 import com.pcloud.sdk.ApiClient;
 import com.pcloud.sdk.ApiError;
+import com.pcloud.sdk.Checksums;
 import com.pcloud.sdk.RemoteEntry;
 import com.pcloud.sdk.RemoteFile;
 import com.pcloud.sdk.RemoteFolder;
@@ -36,7 +38,17 @@ public class PCloudFileIteratorMain {
         }
     }
 
-    private static void printFolderContentsRecursive(RemoteFolder folder, int depth) {
+    private String getSha1ForFile(long fileId) {
+    	Checksums result;
+		try {
+			result = apiClient.getChecksums(fileId).execute();
+	    	String sha1 = result.getSha1().hex();
+			return sha1;
+		} catch (IOException | ApiError e) {
+			return "?";
+		}
+    }
+    private void printFolderContentsRecursive(RemoteFolder folder, int depth) {
         String indent = " ".repeat(depth);
         System.out.println(indent + "[Ordner] " + folder.name());
 
@@ -44,13 +56,15 @@ public class PCloudFileIteratorMain {
             for (RemoteEntry entry : folder.children()) {
                 if (entry.isFile()) {
                 	RemoteFile file = entry.asFile();
-                    System.out.println(indent + " - [Datei] " + file.name());
+                	String sha1 = getSha1ForFile(file.fileId());
+                    System.out.println(indent + " - [Datei] " + file.name()+" (" + file.size() + " Bytes, SHA1: " + sha1 + ")");
                 } else if (entry.isFolder()) {
                     printFolderContentsRecursive((RemoteFolder) entry, depth + 1);
                 }
             }
         }
     }
+    
 
     private void listRecursively(long folderId, int depth) {
         try {
@@ -79,7 +93,8 @@ public class PCloudFileIteratorMain {
 	            for (RemoteEntry entry : folder.children()) {
 	                if (entry.isFile()) {
 	                    RemoteFile file = entry.asFile();
-	                    System.out.println(indent + " - [Datei] " + file.name() + " (" + file.size() + " Bytes)");
+	                	String sha1 = getSha1ForFile(file.fileId());
+	                    System.out.println(indent + " - [Datei] " + file.name()+" (" + file.size() + " Bytes, SHA1: " + sha1 + ")");
 	                } else if (entry.isFolder()) {
 	                    // Rekursiver Schritt für die Unterordner-ID
 	                	RemoteFolder subFolder = entry.asFolder();
