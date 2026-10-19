@@ -16,8 +16,8 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.filedupedetector.model.FileRecord;
 import com.filedupedetector.model.ScanLocation;
 import com.filedupedetector.model.ScanLocation.LocationType;
-import com.filedupedetector.pcloud.PCloudApiClient;
 import com.filedupedetector.model.ScanSession;
+import com.filedupedetector.pcloud.PCloudApiClient;
 import com.filedupedetector.persistence.FileRecordRepository;
 import com.filedupedetector.persistence.JdbcConnectionManager;
 import com.filedupedetector.persistence.JdbcFileRecordRepository;
@@ -27,6 +27,7 @@ import com.filedupedetector.persistence.ScanLocationRepository;
 import com.filedupedetector.scan.NioFileWalker;
 import com.filedupedetector.scan.Sha1HashService;
 import com.filedupedetector.service.DuplicateMatcher;
+import com.filedupedetector.service.PCloudScanServiceImpl;
 import com.filedupedetector.service.ScanProgressListener;
 import com.filedupedetector.service.ScanService;
 import com.filedupedetector.service.ScanServiceImpl;
@@ -48,6 +49,7 @@ public class FileScanCliMain {
 	ScanLocationRepository scanLocationRepository;
 	FileRecordRepository fileRecordRepository;
     ScanService scanService;
+    ScanService pcloudScanService;
             
 	public FileScanCliMain() {
         JdbcConnectionManager connectionManager = new JdbcConnectionManager();
@@ -63,7 +65,16 @@ public class FileScanCliMain {
                 scanLocationRepository,
                 scanSessionRepository,
                 true);
+
+        this.pcloudScanService = new PCloudScanServiceImpl(
+                fileRecordRepository,
+                scanLocationRepository,
+                scanSessionRepository,
+                true);
+
 	}
+
+}
 	
 	record VolumeInfo(String volName, String volType, long volSize, String volVSN) {}
 	
@@ -222,6 +233,25 @@ public class FileScanCliMain {
 	}
 
 	public void scanPCloudLocation(String name) {
+		final ScanStatus status = new ScanStatus();
+		
+		ScanProgressListener listener = new ScanProgressListener() {
+			@Override
+			public void onProgress(int filesProcessed, int totalEstimate) {
+				status.update(totalEstimate, filesProcessed);
+			}
+			@Override
+			public void onSessionComplete(ScanSession result) {
+				synchronized (status) {
+					status.finished();
+					status.notifyAll();
+				}
+			}
+			@Override
+			public void onLocationUnavailable(ScanLocation location) {
+				System.out.println("WARNING: location unavailable: " + location.getRootPath());
+			}
+		};
 		List<ScanLocation> locations = scanLocationRepository.findAll();
         List<ScanLocation> locationsToScan = locations.stream()
 				.filter(loc -> loc.getDisplayName().equals(name))
