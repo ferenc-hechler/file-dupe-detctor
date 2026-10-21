@@ -10,35 +10,29 @@ CREATE TABLE IF NOT EXISTS scan_location (
     vol_size        BIGINT        NOT NULL DEFAULT -1,
     vol_vsn         VARCHAR(64)   NOT NULL DEFAULT '?',
     type            VARCHAR(16)   NOT NULL,
-    last_scanned_at TIMESTAMP     NULL,
-    available       BOOLEAN       NOT NULL DEFAULT TRUE
+    vol_size        BIGINT        NOT NULL DEFAULT -1,
+    root_folder_id    BIGINT        NULL,
+    CONSTRAINT fk_scan_location_root_folder FOREIGN KEY (root_folder_id) REFERENCES folder_record (id)
 );
-
-ALTER TABLE scan_location ADD COLUMN IF NOT EXISTS vol_name VARCHAR(512) NOT NULL DEFAULT '?';
-ALTER TABLE scan_location ADD COLUMN IF NOT EXISTS vol_type VARCHAR(128) NOT NULL DEFAULT '?';
-ALTER TABLE scan_location ADD COLUMN IF NOT EXISTS vol_size BIGINT NOT NULL DEFAULT -1;
-ALTER TABLE scan_location ADD COLUMN IF NOT EXISTS vol_vsn VARCHAR(64) NOT NULL DEFAULT '?';
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_scan_location_root_path ON scan_location (root_path);
 
-CREATE TABLE IF NOT EXISTS file_record (
+CREATE TABLE IF NOT EXISTS folder_record (
     id                   BIGINT AUTO_INCREMENT PRIMARY KEY,
-    scan_location_id     BIGINT        NOT NULL,
-    relative_path        VARCHAR(4000) NOT NULL,
-    size_bytes           BIGINT        NOT NULL,
-    content_hash         VARCHAR(64)   NULL,
-    last_modified_at     TIMESTAMP     NOT NULL,
-    last_seen_at         TIMESTAMP     NOT NULL,
-    CONSTRAINT fk_file_record_location FOREIGN KEY (scan_location_id) REFERENCES scan_location (id)
+    name                 VARCHAR(512)  NOT NULL,
+    parent_folder_id     BIGINT        NOT NULL,
+    CONSTRAINT fk_folder_record_parent_folder FOREIGN KEY (parent_folder_id) REFERENCES folder_record (id)
 );
 
--- Migration: the status and last_scan_session_id columns were removed.
--- Status is re-added if missing so the cleanup below is valid on fresh and existing databases;
--- rows that were not PRESENT are dropped, as only present files are stored now.
-ALTER TABLE file_record ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'PRESENT';
-DELETE FROM file_record WHERE status <> 'PRESENT';
-ALTER TABLE file_record DROP COLUMN IF EXISTS status;
-ALTER TABLE file_record DROP COLUMN IF EXISTS last_scan_session_id;
+CREATE TABLE IF NOT EXISTS file_record (
+    id                   BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name                 VARCHAR(256)  NOT NULL,
+    parent_folder_id     BIGINT        NOT NULL,
+    size_bytes           BIGINT        NOT NULL,
+    sha1hash             VARCHAR(64)   NULL,
+    last_modified_at     TIMESTAMP     NOT NULL,
+    CONSTRAINT fk_file_record_parent_folder FOREIGN KEY (parent_folder_id) REFERENCES folder_record (id)
+);
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_file_record_location_path ON file_record (scan_location_id, relative_path);
 CREATE INDEX IF NOT EXISTS ix_file_record_size_hash ON file_record (size_bytes, content_hash);

@@ -9,25 +9,23 @@ import java.util.Objects;
 public final class FileRecord {
 
     private long id;
-    private long scanLocationId;
-    private String relativePath;
+    private String name;
+    private long parentFolderId;
     private long sizeBytes;
-    private String contentHash; // nullable
+    private String sha1hash;
     private Instant lastModifiedAt;
-    private Instant lastSeenAt;
-
+ 
     public FileRecord() {
     }
 
-    public FileRecord(long id, long scanLocationId, String relativePath, long sizeBytes,
-                       String contentHash, Instant lastModifiedAt, Instant lastSeenAt) {
+    public FileRecord(long id, long parentFolderId, String name, long sizeBytes,
+                       String sha1hash, Instant lastModifiedAt, Instant lastSeenAt) {
         this.id = id;
-        this.scanLocationId = scanLocationId;
-        this.relativePath = Objects.requireNonNull(relativePath, "relativePath must not be null");
+        this.parentFolderId = parentFolderId;
+        this.name = Objects.requireNonNull(name, "name must not be null");
         this.sizeBytes = sizeBytes;
-        this.contentHash = contentHash;
+        this.sha1hash = sha1hash;
         this.lastModifiedAt = lastModifiedAt;
-        this.lastSeenAt = lastSeenAt;
     }
 
     public long getId() {
@@ -38,22 +36,22 @@ public final class FileRecord {
         this.id = id;
     }
 
-    public long getScanLocationId() {
-        return scanLocationId;
+    public String getName() {
+		return name;
+	}
+    
+    public void setName(String name) {
+    	this.name = name;
     }
-
-    public void setScanLocationId(long scanLocationId) {
-        this.scanLocationId = scanLocationId;
+    
+    public long getParentFolderId() {
+		return parentFolderId;
+	}
+    
+    public void setParentFolderId(long parentFolderId) {
+    	this.parentFolderId = parentFolderId;
     }
-
-    public String getRelativePath() {
-        return relativePath;
-    }
-
-    public void setRelativePath(String relativePath) {
-        this.relativePath = relativePath;
-    }
-
+    
     public long getSizeBytes() {
         return sizeBytes;
     }
@@ -62,12 +60,12 @@ public final class FileRecord {
         this.sizeBytes = sizeBytes;
     }
 
-    public String getContentHash() {
-        return contentHash;
+    public String getSha1hash() {
+        return sha1hash;
     }
 
-    public void setContentHash(String contentHash) {
-        this.contentHash = contentHash;
+    public void setSha1hash(String sha1hash) {
+        this.sha1hash = sha1hash;
     }
 
     public Instant getLastModifiedAt() {
@@ -78,13 +76,6 @@ public final class FileRecord {
         this.lastModifiedAt = lastModifiedAt;
     }
 
-    public Instant getLastSeenAt() {
-        return lastSeenAt;
-    }
-
-    public void setLastSeenAt(Instant lastSeenAt) {
-        this.lastSeenAt = lastSeenAt;
-    }
 
     @Override
     public boolean equals(Object o) {
@@ -100,7 +91,7 @@ public final class FileRecord {
 
     @Override
     public String toString() {
-        return "FileRecord{id=%d, scanLocationId=%d, relativePath='%s', sizeBytes=%d}"
-                .formatted(id, scanLocationId, relativePath, sizeBytes);
+        return "FileRecord{id=%d, parentFolderId=%d, name='%s', sizeBytes=%d}"
+                .formatted(id, parentFolderId, name, sizeBytes);
     }
 }
