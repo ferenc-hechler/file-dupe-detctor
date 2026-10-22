@@ -1,16 +1,5 @@
 package com.filedupedetector.service;
 
-import com.filedupedetector.model.FileRecord;
-import com.filedupedetector.model.ScanLocation;
-import com.filedupedetector.persistence.FileRecordRepository;
-import com.filedupedetector.persistence.ScanLocationRepository;
-import com.filedupedetector.scan.FileVisitCallback;
-import com.filedupedetector.scan.FileWalker;
-import com.filedupedetector.scan.HashService;
-import com.filedupedetector.scan.InaccessibleReason;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -21,6 +10,19 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.filedupedetector.model.FileRecord;
+import com.filedupedetector.model.ScanLocation;
+import com.filedupedetector.persistence.FileRecordRepository;
+import com.filedupedetector.persistence.FolderRecordRepository;
+import com.filedupedetector.persistence.ScanLocationRepository;
+import com.filedupedetector.scan.FileVisitCallback;
+import com.filedupedetector.scan.FileWalker;
+import com.filedupedetector.scan.HashService;
+import com.filedupedetector.scan.InaccessibleReason;
 
 /**
  * Orchestrates {@link FileWalker} + {@link DuplicateMatcher} size pre-filter +
@@ -38,41 +40,26 @@ public final class ScanServiceImpl implements ScanService {
 
     private final FileWalker fileWalker;
     private final HashService hashService;
-    private final DuplicateMatcher duplicateMatcher;
     private final FileRecordRepository fileRecordRepository;
     private final ScanLocationRepository scanLocationRepository;
-    private final com.filedupedetector.persistence.ScanSessionRepository scanSessionRepository;
-    private final boolean alwaysHashNewFiles;
+    private final FolderRecordRepository folderRecordRepository;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "scan-worker");
         t.setDaemon(true);
         return t;
     });
 
-    public ScanServiceImpl(FileWalker fileWalker,
-                            HashService hashService,
-                            DuplicateMatcher duplicateMatcher,
-                            FileRecordRepository fileRecordRepository,
-                            ScanLocationRepository scanLocationRepository,
-                            com.filedupedetector.persistence.ScanSessionRepository scanSessionRepository) {
-        this(fileWalker, hashService, duplicateMatcher, fileRecordRepository, scanLocationRepository,
-                scanSessionRepository, false);
-    }
 
     public ScanServiceImpl(FileWalker fileWalker,
                             HashService hashService,
-                            DuplicateMatcher duplicateMatcher,
                             FileRecordRepository fileRecordRepository,
                             ScanLocationRepository scanLocationRepository,
-                            com.filedupedetector.persistence.ScanSessionRepository scanSessionRepository,
-                            boolean alwaysHashNewFiles) {
-        this.alwaysHashNewFiles = alwaysHashNewFiles;
+                            FolderRecordRepository folderRecordRepository) {
         this.fileWalker = fileWalker;
         this.hashService = hashService;
-        this.duplicateMatcher = duplicateMatcher;
         this.fileRecordRepository = fileRecordRepository;
         this.scanLocationRepository = scanLocationRepository;
-        this.scanSessionRepository = scanSessionRepository;
+        this.folderRecordRepository = folderRecordRepository;
     }
 
     @Override
@@ -84,40 +71,24 @@ public final class ScanServiceImpl implements ScanService {
                 // FR-014/resilience: never let an unexpected error silently hang the caller
                 // (e.g. the GUI's "Scanning..." status) without any completion signal.
                 log.error("Scan failed unexpectedly", e);
-                com.filedupedetector.model.ScanSession failed = new com.filedupedetector.model.ScanSession();
-                failed.setStartedAt(Instant.now());
-                failed.setEndedAt(Instant.now());
-                failed.setOutcome(com.filedupedetector.model.ScanSession.ScanOutcome.INTERRUPTED);
-                listener.onSessionComplete(failed);
+                listener.onLocationUnavailable(e.getMessage());
             }
         });
     }
 
     /** Synchronous scan, usable directly by the Phase 3 console harness (T024) and tests. */
-    public void scanBlocking(List<ScanLocation> locations, ScanProgressListener listener) {
-        List<Long> locationIds = locations.stream().map(ScanLocation::getId).toList();
-        com.filedupedetector.model.ScanSession session = scanSessionRepository.start(locationIds);
+    public void scanBlocking(ScanLocation location, ScanProgressListener listener) {
+        Long locationId = location.getId();
 
         // Phase 1: walk every location first, so the size pre-filter (DuplicateMatcher) can see
         // ALL candidate files across ALL locations at once - a file that is "unique" within its
         // own folder may still duplicate a same-size file in a different scan location.
-        List<WalkedLocation> walked = new ArrayList<>();
         boolean anyInterrupted = false;
-        for (ScanLocation location : locations) {
-            WalkedLocation w = walkOneLocation(location);
-            walked.add(w);
+            WalkedLocation walked = walkOneLocation(location);
             if (w.unavailable()) {
                 anyInterrupted = true;
                 listener.onLocationUnavailable(location);
             }
-        }
-
-        List<DuplicateMatcher.SizedPath> allFilesAcrossLocations = walked.stream()
-                .flatMap(w -> w.files().stream())
-                .toList();
-        Set<DuplicateMatcher.SizedPath> hashCandidates = alwaysHashNewFiles
-                ? new HashSet<>(allFilesAcrossLocations)
-                : new HashSet<>(duplicateMatcher.filterHashCandidates(allFilesAcrossLocations));
 
         // Phase 2: hash candidates and persist, per location.
         int totalProcessed = 0;
@@ -128,7 +99,7 @@ public final class ScanServiceImpl implements ScanService {
                 continue;
             }
             try {
-                LocationScanResult result = persistOneLocation(w, hashCandidates, listener);
+                LocationScanResult result = persistOneLocation(w, listener);
                 totalProcessed += result.processed();
                 totalErrored += result.errored();
                 totalMissing += result.missing();
@@ -138,25 +109,14 @@ public final class ScanServiceImpl implements ScanService {
                 // (FR-014). Surface it the same way an unavailable location would be.
                 log.error("Failed to persist results for location {}: {}", w.location().getRootPath(), e.getMessage(), e);
                 anyInterrupted = true;
-                listener.onLocationUnavailable(w.location());
+                listener.onLocationUnavailable(e.getMessage());
             }
         }
 
-        var outcome = anyInterrupted
-                ? com.filedupedetector.model.ScanSession.ScanOutcome.INTERRUPTED
-                : com.filedupedetector.model.ScanSession.ScanOutcome.COMPLETED;
-        scanSessionRepository.complete(session.getId(), outcome, totalProcessed, totalErrored, totalMissing);
-
-        session.setEndedAt(Instant.now());
-        session.setOutcome(outcome);
-        session.setFilesProcessed(totalProcessed);
-        session.setFilesSkippedErrored(totalErrored);
-        session.setFilesMissing(totalMissing);
-        listener.onSessionComplete(session);
+        listener.onSessionComplete(totalProcessed, totalErrored, totalMissing);
     }
 
     private record WalkedLocation(ScanLocation location, Path root, boolean unavailable,
-                                   List<DuplicateMatcher.SizedPath> files,
                                    List<Path> erroredPaths, List<Path> inaccessiblePaths) {
     }
 

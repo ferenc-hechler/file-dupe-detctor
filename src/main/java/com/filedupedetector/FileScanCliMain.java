@@ -16,11 +16,13 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.filedupedetector.model.FileRecord;
 import com.filedupedetector.model.ScanLocation;
 import com.filedupedetector.model.ScanLocation.LocationType;
-import com.filedupedetector.pcloud.PCloudApiClient;
 import com.filedupedetector.model.ScanSession;
+import com.filedupedetector.pcloud.PCloudApiClient;
 import com.filedupedetector.persistence.FileRecordRepository;
+import com.filedupedetector.persistence.FolderRecordRepository;
 import com.filedupedetector.persistence.JdbcConnectionManager;
 import com.filedupedetector.persistence.JdbcFileRecordRepository;
+import com.filedupedetector.persistence.JdbcFolderRecordRepository;
 import com.filedupedetector.persistence.JdbcScanLocationRepository;
 import com.filedupedetector.persistence.JdbcScanSessionRepository;
 import com.filedupedetector.persistence.ScanLocationRepository;
@@ -47,13 +49,14 @@ public class FileScanCliMain {
 	
 	ScanLocationRepository scanLocationRepository;
 	FileRecordRepository fileRecordRepository;
+	FolderRecordRepository folderRecordRepository;
     ScanService scanService;
             
 	public FileScanCliMain() {
         JdbcConnectionManager connectionManager = new JdbcConnectionManager();
         this.scanLocationRepository = new JdbcScanLocationRepository(connectionManager);
         this.fileRecordRepository = new JdbcFileRecordRepository(connectionManager);
-        var scanSessionRepository = new JdbcScanSessionRepository(connectionManager);
+        this.folderRecordRepository = new JdbcFolderRecordRepository(connectionManager);
 
         this.scanService = new ScanServiceImpl(
                 new NioFileWalker(),
@@ -61,7 +64,7 @@ public class FileScanCliMain {
                 new DuplicateMatcher(),
                 fileRecordRepository,
                 scanLocationRepository,
-                scanSessionRepository,
+                folderRecordRepository,
                 true);
 	}
 	
