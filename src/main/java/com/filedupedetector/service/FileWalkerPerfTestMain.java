@@ -1,6 +1,5 @@
 package com.filedupedetector.service;
 
-
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
@@ -24,19 +23,18 @@ import com.filedupedetector.persistence.JdbcFolderRecordRepository;
 import com.filedupedetector.persistence.JdbcScanLocationRepository;
 import com.filedupedetector.persistence.ScanLocationRepository;
 
-public final class FileWalkerPerfTestMain  {
+public final class FileWalkerPerfTestMain {
 
     ScanLocationRepository scanLocationRepository;
     FileRecordRepository fileRecordRepository;
     FolderRecordRepository folderRecordRepository;
-    
+
     public FileWalkerPerfTestMain() {
-        JdbcConnectionManager connectionManager = new JdbcConnectionManager(true);
+        JdbcConnectionManager connectionManager = new JdbcConnectionManager(false);
         this.scanLocationRepository = new JdbcScanLocationRepository(connectionManager);
         this.fileRecordRepository = new JdbcFileRecordRepository(connectionManager);
         this.folderRecordRepository = new JdbcFolderRecordRepository(connectionManager);
     }
-    
 
     private void showDBFiles(int maxDepth) {
         scanLocationRepository.findAll().forEach(location -> {
@@ -55,25 +53,58 @@ public final class FileWalkerPerfTestMain  {
             System.out.println("  FileRecord: " + file);
         });
         folderRecordRepository.findByParentFolder(folderRecord.getId()).forEach(folder -> {
-             recursiveShowDBFiles(folder, maxDepth - 1);
+            recursiveShowDBFiles(folder, maxDepth - 1);
         });
     }
 
+    private long countfiles(String folder) {
+        try {
+            Path root = Path.of(folder);
+            final long[] count = { 0 };
+            final long[] nextProgress = { System.nanoTime() }; 
+            Files.walkFileTree(root, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                    if (System.nanoTime() >= nextProgress[0]) {
+                        System.out.printf("countfiles: %d files counted%n", count[0]);
+                        nextProgress[0] = System.nanoTime() + 15_000_000_000L; // alle 15 Sekunden
+                    }
+                    if (attrs.isRegularFile())
+                        count[0]++;
+                    return FileVisitResult.CONTINUE;
+                }
 
-    
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return FileVisitResult.CONTINUE; // z. B. fehlende Berechtigungen ignorieren
+                }
+            });
+            System.out.printf("countfiles: %d files counted%n", count[0]);
+            return count[0];
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     class MyFileVisitor extends SimpleFileVisitor<Path> {
         private ScanLocation location;
         private Stack<FolderRecord> dirStack;
         private FolderRecord currentFolder;
         private long fileCount;
         private long folderCount;
-        public MyFileVisitor(ScanLocation location) {
+        private long expectedFileCount;
+        private long nextProgressOutput;
+
+        public MyFileVisitor(ScanLocation location, long expectedFileCount) {
             this.location = location;
+            this.expectedFileCount = expectedFileCount;
+            this.nextProgressOutput = System.nanoTime();
             FolderRecord rootFolder = null;
             if (location.getRootFolderId() != null) {
                 rootFolder = folderRecordRepository.findById(location.getRootFolderId());
                 if (rootFolder == null) {
-                    throw new IllegalStateException("ScanLocation has rootFolderId=" + location.getRootFolderId() + " but no such folder exists in the database");
+                    throw new IllegalStateException("ScanLocation has rootFolderId=" + location.getRootFolderId()
+                            + " but no such folder exists in the database");
                 }
             }
             if (location.getRootFolderId() == null) {
@@ -94,6 +125,7 @@ public final class FileWalkerPerfTestMain  {
             fileCount = 0;
             folderCount = 0;
         }
+
         @Override
         public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
             folderCount++;
@@ -102,10 +134,11 @@ public final class FileWalkerPerfTestMain  {
             String folderName = dir.getFileName().toString();
             currentFolder = null;
             if (!oldCurrentFolder.isNew()) {
-                FolderRecord existingFolder = folderRecordRepository.findByParentFolderAndName(oldCurrentFolder.getId(), folderName);
+                FolderRecord existingFolder = folderRecordRepository.findByParentFolderAndName(oldCurrentFolder.getId(),
+                        folderName);
                 if (existingFolder != null) {
                     currentFolder = existingFolder;
-                } 
+                }
             }
             if (currentFolder == null) {
                 currentFolder = new FolderRecord();
@@ -118,16 +151,24 @@ public final class FileWalkerPerfTestMain  {
 //            System.out.println("P["+oldCurrentFolder.getId()+"]/DIR["+currentFolder.getId()+"]: " + dir);
             return FileVisitResult.CONTINUE;
         }
+
         @Override
         public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+            if (System.nanoTime() >= nextProgressOutput) {
+                double progress = (expectedFileCount > 0) ? (100.0 * fileCount / expectedFileCount) : -1;
+                System.out.printf("Progress: %d/%d files, %d folders scanned (%.2f%%)%n", 
+                    fileCount, expectedFileCount, folderCount, progress);
+                nextProgressOutput = System.nanoTime() + 5_000_000_000L; // alle 15 Sekunden
+            }
             fileCount++;
             String fileName = file.getFileName().toString();
             FileRecord fileRecord = null;
             if (!currentFolder.isNew()) {
-                FileRecord existingFile = fileRecordRepository.findByParentFolderAndName(currentFolder.getId(), fileName);
+                FileRecord existingFile = fileRecordRepository.findByParentFolderAndName(currentFolder.getId(),
+                        fileName);
                 if (existingFile != null) {
                     fileRecord = existingFile;
-                } 
+                }
             }
             if (fileRecord == null) {
                 fileRecord = new FileRecord();
@@ -146,6 +187,7 @@ public final class FileWalkerPerfTestMain  {
             System.err.println("  Error accessing path: " + file + " error=" + exc.toString());
             return FileVisitResult.CONTINUE;
         }
+
         @Override
         public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
             if (exc != null) {
@@ -156,15 +198,16 @@ public final class FileWalkerPerfTestMain  {
 //            System.out.println("<-- leaving DIR["+oldCurrentFolder.getId()+"] back to DIR["+currentFolder.getId()+"]");
             return FileVisitResult.CONTINUE;
         }
+
         public long getFileCount() {
             return fileCount;
         }
+
         public long getFolderCount() {
             return folderCount;
         }
     }
-    
-    
+
     private static void verifySameLocation(ScanLocation existing, ScanLocation requested) {
         List<String> differences = new java.util.ArrayList<>();
         addDifference(differences, "rootPath", existing.getRootPath(), requested.getRootPath());
@@ -183,7 +226,7 @@ public final class FileWalkerPerfTestMain  {
             differences.add(field + " (stored: " + stored + ", requested: " + requested + ")");
         }
     }
-    
+
     public ScanLocation retrieveScanLocation(String name, String folderPath) {
         ScanLocation location = new ScanLocation();
         location.setDisplayName(name);
@@ -193,28 +236,33 @@ public final class FileWalkerPerfTestMain  {
 
         var existing = scanLocationRepository.findByDisplayName(name);
         if (existing != null) {
-            // The location already exists: it must still describe the same folder on the same volume.
+            // The location already exists: it must still describe the same folder on the
+            // same volume.
             verifySameLocation(existing, location);
             return existing;
         }
         return scanLocationRepository.save(location);
     }
 
-    
-    record WalkResult(long folderCount, long fileCount) {}
-    
-    private WalkResult testWalk(String rootPath) {
+    record WalkResult(long folderCount, long fileCount) {
+    }
+
+    private WalkResult testWalk(String rootPath, long expectedFileCount) {
         Path root = Path.of(rootPath);
-        if (!java.nio.file.Files.exists(root) || !java.nio.file.Files.isReadable(root) || !java.nio.file.Files.isDirectory(root)) {
+        if (!java.nio.file.Files.exists(root) || !java.nio.file.Files.isReadable(root)
+                || !java.nio.file.Files.isDirectory(root)) {
             System.err.println("directory not found: " + rootPath);
             return null;
         }
         ScanLocation scanLocation = retrieveScanLocation(rootPath, rootPath);
         try {
-            MyFileVisitor visitor = new MyFileVisitor(scanLocation);
+            MyFileVisitor visitor = new MyFileVisitor(scanLocation, expectedFileCount);
             Files.walkFileTree(root, visitor);
+            System.out.printf("Progress: %d/%d files, %d folders scanned (%.2f%%)%n", 
+                    visitor.getFileCount(), expectedFileCount, visitor.getFolderCount(), 100.0);
+
             return new WalkResult(visitor.getFolderCount(), visitor.getFileCount());
-         } catch (IOException e) {
+        } catch (IOException e) {
             System.err.println("Error walking file tree: " + e.toString());
             return null;
         }
@@ -222,21 +270,30 @@ public final class FileWalkerPerfTestMain  {
 
     public static void main(String[] args) {
         FileWalkerPerfTestMain test = new FileWalkerPerfTestMain();
-        
-        test.showDBFiles(3);
-        
-        
+
+//        test.showDBFiles(3);
+
         long start = System.nanoTime();
-        WalkResult wr = test.testWalk("C:/DEV/ws-mlops2");
+//        long countFiles = test.countfiles("C:/DEV/ws-mlops2");
+        long countFiles = test.countfiles("C:/DEV");
+        long stop = System.nanoTime();
+        double seconds = (stop - start) / 1_000_000_000.0;
+        System.out.printf("%ncountfiles: %d took %.3f sec%n", countFiles, seconds);
+
+        start = System.nanoTime();
+//        WalkResult wr = test.testWalk("C:/DEV/ws-mlops2", countFiles);
+        WalkResult wr = test.testWalk("C:/DEV", countFiles);
 //        WalkResult wr = test.testWalk(".");
 //        WalkResult wr = test.testWalk("./src");
 //        test.testWalk("./specs");
-        long stop = System.nanoTime();
-        double seconds = (stop - start) / 1_000_000_000.0;
-        
-        test.showDBFiles(3);
+        stop = System.nanoTime();
+        seconds = (stop - start) / 1_000_000_000.0;
 
-        System.out.printf("%n### testWalk dauerte %.3f Sekunden ###%n  Folders: %d%n  Files: %d%n  avg. per file: %.3f ms", seconds, wr.folderCount(), wr.fileCount(), 1000.0 * seconds / wr.fileCount());
+//        test.showDBFiles(3);
+
+        System.out.printf(
+                "%n### testWalk dauerte %.3f Sekunden ###%n  Folders: %d%n  Files: %d%n  avg. per file: %.3f ms%n",
+                seconds, wr.folderCount(), wr.fileCount(), 1000.0 * seconds / wr.fileCount());
     }
 
 }
