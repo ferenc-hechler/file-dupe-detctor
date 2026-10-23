@@ -2,7 +2,6 @@ package com.filedupedetector.service;
 
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
-import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -36,7 +35,7 @@ public final class FileWalkerPerfTestMain {
         this.folderRecordRepository = new JdbcFolderRecordRepository(connectionManager);
     }
 
-    private void showDBFiles(int maxDepth) {
+    public void showDBFiles(int maxDepth) {
         scanLocationRepository.findAll().forEach(location -> {
             System.out.println("ScanLocation: " + location);
             FolderRecord folderRecord = folderRecordRepository.findById(location.getRootFolderId());
@@ -193,7 +192,7 @@ public final class FileWalkerPerfTestMain {
             if (exc != null) {
                 System.err.println("Error accessing directory: " + dir + " error=" + exc.toString());
             }
-            FolderRecord oldCurrentFolder = currentFolder;
+//            FolderRecord oldCurrentFolder = currentFolder;
             currentFolder = dirStack.pop();
 //            System.out.println("<-- leaving DIR["+oldCurrentFolder.getId()+"] back to DIR["+currentFolder.getId()+"]");
             return FileVisitResult.CONTINUE;
@@ -274,15 +273,17 @@ public final class FileWalkerPerfTestMain {
 //        test.showDBFiles(3);
 
         long start = System.nanoTime();
-//        long countFiles = test.countfiles("C:/DEV/ws-mlops2");
-        long countFiles = test.countfiles("C:/DEV");
+      long countFiles = test.countfiles("C:/DEV/ws-mlops2/JavaTest");
+//      long countFiles = test.countfiles("C:/DEV/ws-mlops2");
+//        long countFiles = test.countfiles("C:/DEV");
         long stop = System.nanoTime();
         double seconds = (stop - start) / 1_000_000_000.0;
         System.out.printf("%ncountfiles: %d took %.3f sec%n", countFiles, seconds);
 
         start = System.nanoTime();
+        WalkResult wr = test.testWalk("C:/DEV/ws-mlops2/JavaTest", countFiles);
 //        WalkResult wr = test.testWalk("C:/DEV/ws-mlops2", countFiles);
-        WalkResult wr = test.testWalk("C:/DEV", countFiles);
+//        WalkResult wr = test.testWalk("C:/DEV", countFiles);
 //        WalkResult wr = test.testWalk(".");
 //        WalkResult wr = test.testWalk("./src");
 //        test.testWalk("./specs");
