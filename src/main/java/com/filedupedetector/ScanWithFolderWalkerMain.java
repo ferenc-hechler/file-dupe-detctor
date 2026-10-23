@@ -34,6 +34,7 @@ public final class ScanWithFolderWalkerMain {
     FileRecordRepository fileRecordRepository;
     FolderRecordRepository folderRecordRepository;
     HashService hashService;
+    JSONExporter jsonExporter;
 
     public ScanWithFolderWalkerMain() {
         JdbcConnectionManager connectionManager = new JdbcConnectionManager(true);
