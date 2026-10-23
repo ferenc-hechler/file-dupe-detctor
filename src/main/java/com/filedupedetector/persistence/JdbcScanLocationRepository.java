@@ -101,7 +101,7 @@ public final class JdbcScanLocationRepository implements ScanLocationRepository 
             ps.setLong(5, location.getVolSize());
             ps.setString(6, location.getVolVSN());
             ps.setString(7, location.getType().name());
-            ps.setLong(8, location.getRootFolderId());
+            ps.setObject(8, location.getRootFolderId(), java.sql.Types.BIGINT);  // allow null for root_folder_id
             ps.setLong(9, location.getId());
             ps.executeUpdate();
         }

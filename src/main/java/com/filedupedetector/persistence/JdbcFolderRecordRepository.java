@@ -109,11 +109,19 @@ public final class JdbcFolderRecordRepository implements FolderRecordRepository 
 
     @Override
     public FolderRecord findByParentFolderAndName(Long parentFolderId, String name) {
-    	String sql = SELECT_COLUMNS + "WHERE parent_folder_id = ? AND name = ?";
+    	    String sql = SELECT_COLUMNS + "WHERE parent_folder_id = ? AND name = ?";
+    	    if (parentFolderId == null) {
+    	        sql = SELECT_COLUMNS + "WHERE parent_folder_id is NULL AND name = ?";
+    	    }
         try (Connection conn = connectionManager.openConnection()) {
 	        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-	            ps.setObject(1, parentFolderId, java.sql.Types.BIGINT);  // allow null for parent_folder_id
-	            ps.setString(2, name);
+	            if (parentFolderId == null) {
+                    ps.setString(1, name);
+	            }
+	            else {
+        	            ps.setLong(1, parentFolderId);
+        	            ps.setString(2, name);
+	            }
 	            try (ResultSet rs = ps.executeQuery()) {
 	            	FolderRecord result = null;
 	                if (rs.next()) {
@@ -190,7 +198,7 @@ public final class JdbcFolderRecordRepository implements FolderRecordRepository 
         FolderRecord record = new FolderRecord();
         record.setId(rs.getLong("id"));
         record.setName(rs.getString("name"));
-        record.setParentFolderId(rs.getLong("parent_folder_id"));
+        record.setParentFolderId(rs.getObject("parent_folder_id", Long.class));  // allow null for parent_folder_id
         return record;
     }
 

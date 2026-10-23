@@ -180,7 +180,7 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
         FileRecord record = new FileRecord();
         record.setId(rs.getLong("id"));
         record.setName(rs.getString("name"));
-        record.setParentFolderId(rs.getLong("parent_folder_id"));
+        record.setParentFolderId(rs.getObject("parent_folder_id", Long.class));  // allow null for parent_folder_id
         record.setSizeBytes(rs.getLong("size_bytes"));
         record.setSha1hash(rs.getString("sha1_hash"));
         Timestamp lastModified = rs.getTimestamp("last_modified_at");

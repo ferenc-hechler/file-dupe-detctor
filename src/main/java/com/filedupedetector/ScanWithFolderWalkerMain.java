@@ -118,13 +118,14 @@ public final class ScanWithFolderWalkerMain {
                     rootFolder.setName(location.getRootPath());
                     rootFolder.setParentFolderId(null);
                     rootFolder = folderRecordRepository.upsert(rootFolder);
-                    rootFolder.setNew(false);
+                    rootFolder.setNew(true);
                 }
                 rootFolder.setFullPath(location.getRootPath());
                 location.setRootFolderId(rootFolder.getId());
                 scanLocationRepository.save(location);
             }
-            currentFolder = rootFolder;
+            currentFolder = new FolderRecord();
+            currentFolder.setROOT(true);
             dirStack = new Stack<>();
             fileCount = 0;
             folderCount = 0;
@@ -134,33 +135,16 @@ public final class ScanWithFolderWalkerMain {
         
         @Override
         public void visitFolder(Path folder, List<FileEntry> files, List<Path> subFolders) {
-            FolderRecord oldCurrentFolder = currentFolder;
-            dirStack.push(currentFolder);
-            String folderName = folder.getFileName().toString();
-            currentFolder = null;
             Map<String, FileRecord> dbFiles = new HashMap<>();
             Map<String, FolderRecord> dbFolders = new HashMap<>();
-            if (!oldCurrentFolder.isNew()) {
-                FolderRecord existingFolder = folderRecordRepository.findByParentFolderAndName(oldCurrentFolder.getId(),
-                        folderName);
-                if (existingFolder != null) {
-                    currentFolder = existingFolder;
-                    for (FileRecord fileRecord : fileRecordRepository.findByParentFolder(currentFolder.getId())) {
-                        dbFiles.put(fileRecord.getName(), fileRecord);
-                    }
-                    for (FolderRecord folderRecord : folderRecordRepository.findByParentFolder(currentFolder.getId())) {
-                        dbFolders.put(folderRecord.getName(), folderRecord);
-                    }
+            if (!currentFolder.isNew()) {
+                for (FileRecord fileRecord : fileRecordRepository.findByParentFolder(currentFolder.getId())) {
+                    dbFiles.put(fileRecord.getName(), fileRecord);
+                }
+                for (FolderRecord folderRecord : folderRecordRepository.findByParentFolder(currentFolder.getId())) {
+                    dbFolders.put(folderRecord.getName(), folderRecord);
                 }
             }
-            if (currentFolder == null) {
-                currentFolder = new FolderRecord();
-                currentFolder.setName(folderName);
-                currentFolder.setParentFolderId(oldCurrentFolder.getId());
-                currentFolder = folderRecordRepository.upsert(currentFolder);
-                currentFolder.setNew(false);
-            }
-            currentFolder.setFullPath(oldCurrentFolder.getFullPath() + "/" + folderName);
 
             for (FileEntry fileEntry : files) {
                 if (System.nanoTime() >= nextProgressOutput) {
@@ -194,7 +178,6 @@ public final class ScanWithFolderWalkerMain {
             subFolders.stream().map(subFolder -> subFolder.getFileName().toString()).forEach(subFolderName -> dbFolders.remove(subFolderName));
             dbFolders.values().forEach((folderToDelete) -> recursiveDeleteFolder(folderToDelete.getId()));
                                 
-            currentFolder = dirStack.pop();
         }
 
 
@@ -214,10 +197,10 @@ public final class ScanWithFolderWalkerMain {
             folderCount++;
             FolderRecord oldCurrentFolder = currentFolder;
             dirStack.push(currentFolder);
-            String folderName = folder.getFileName().toString();
+            String folderName = currentFolder.isROOT() ? folder.toString() : folder.getFileName().toString();
             currentFolder = null;
-            if (!oldCurrentFolder.isNew()) {
-                FolderRecord existingFolder = folderRecordRepository.findByParentFolderAndName(oldCurrentFolder.getId(), folderName);
+            if (oldCurrentFolder.isROOT() || !oldCurrentFolder.isNew()) {
+                FolderRecord existingFolder = folderRecordRepository.findByParentFolderAndName(oldCurrentFolder.getIdOrNull(), folderName);
                 if (existingFolder != null) {
                     currentFolder = existingFolder;
                 }
@@ -225,11 +208,15 @@ public final class ScanWithFolderWalkerMain {
             if (currentFolder == null) {
                 currentFolder = new FolderRecord();
                 currentFolder.setName(folderName);
-                currentFolder.setParentFolderId(oldCurrentFolder.getId());
+                currentFolder.setParentFolderId(oldCurrentFolder.getIdOrNull());
                 currentFolder = folderRecordRepository.upsert(currentFolder);
                 currentFolder.setNew(true);
             }
-            currentFolder.setFullPath(oldCurrentFolder.getFullPath() + "/" + folderName);
+            if (oldCurrentFolder.isROOT()) {
+                currentFolder.setFullPath(folderName);
+            } else {
+                currentFolder.setFullPath(oldCurrentFolder.getFullPath() + "/" + folderName);
+            }
 
         }
 
@@ -240,9 +227,9 @@ public final class ScanWithFolderWalkerMain {
             if (exc != null) {
                 System.err.println("Error accessing directory: " + folder + " error=" + exc.toString());
             }
-//            FolderRecord oldCurrentFolder = currentFolder;
+//            Long parentFolderID = (oldCurrentFolder != null) ? oldCurrentFolder.getId() : null;
             currentFolder = dirStack.pop();
-//            System.out.println("<-- leaving DIR["+oldCurrentFolder.getId()+"] back to DIR["+currentFolder.getId()+"]");
+//            System.out.println("<-- leaving DIR["+parentFolderID+"] back to DIR["+currentFolder.getId()+"]");
         }
     }
     
@@ -294,7 +281,7 @@ public final class ScanWithFolderWalkerMain {
             String folderName = dir.getFileName().toString();
             currentFolder = null;
             if (!oldCurrentFolder.isNew()) {
-                FolderRecord existingFolder = folderRecordRepository.findByParentFolderAndName(oldCurrentFolder.getId(),
+                FolderRecord existingFolder = folderRecordRepository.findByParentFolderAndName(oldCurrentFolder.getIdOrNull(),
                         folderName);
                 if (existingFolder != null) {
                     currentFolder = existingFolder;
@@ -303,12 +290,16 @@ public final class ScanWithFolderWalkerMain {
             if (currentFolder == null) {
                 currentFolder = new FolderRecord();
                 currentFolder.setName(folderName);
-                currentFolder.setParentFolderId(oldCurrentFolder.getId());
+                currentFolder.setParentFolderId(oldCurrentFolder.getIdOrNull());
                 currentFolder = folderRecordRepository.upsert(currentFolder);
                 currentFolder.setNew(false);
             }
-            currentFolder.setFullPath(oldCurrentFolder.getFullPath() + "/" + folderName);
-//            System.out.println("P["+oldCurrentFolder.getId()+"]/DIR["+currentFolder.getId()+"]: " + dir);
+            if (oldCurrentFolder.isROOT()) {
+                currentFolder.setFullPath(folderName);
+            } else {
+                currentFolder.setFullPath(oldCurrentFolder.getFullPath() + "/" + folderName);
+            }
+//            System.out.println("P["+oldCurrentFolder.getIdOrNull()+"]/DIR["+currentFolder.getId()+"]: " + dir);
             return FileVisitResult.CONTINUE;
         }
 
@@ -355,7 +346,7 @@ public final class ScanWithFolderWalkerMain {
             }
 //            FolderRecord oldCurrentFolder = currentFolder;
             currentFolder = dirStack.pop();
-//            System.out.println("<-- leaving DIR["+oldCurrentFolder.getId()+"] back to DIR["+currentFolder.getId()+"]");
+//            System.out.println("<-- leaving DIR["+oldCurrentFolder.getIdOrNull()+"] back to DIR["+currentFolder.getId()+"]");
             return FileVisitResult.CONTINUE;
         }
 
@@ -465,7 +456,7 @@ public final class ScanWithFolderWalkerMain {
     public static void main(String[] args) {
         ScanWithFolderWalkerMain scanApp = new ScanWithFolderWalkerMain();
         
-      scanApp.showDBFiles(3);
+        scanApp.showDBFiles(3);
         scanApp.scanFileFolder("C:/DEV/ws-mlops2/JavaTest");
         scanApp.showDBFiles(3);
     }

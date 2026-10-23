@@ -13,6 +13,7 @@ public final class FolderRecord {
 	
 	private transient boolean isNew;
 	private transient String fullPath;
+    private transient boolean ROOT;
 
 	public FolderRecord() {
 	    this.isNew = false;
@@ -25,6 +26,7 @@ public final class FolderRecord {
 		this.parentFolderId = parentFolderId;
 		this.isNew = (id == -1);
 		this.fullPath = null;
+		this.ROOT = false;
 	}
 
 	public long getId() {
@@ -67,6 +69,22 @@ public final class FolderRecord {
         return fullPath;
     }
     
+    public boolean isROOT() {
+        return ROOT;
+    }
+
+    public void setROOT(boolean ROOT) {
+        this.ROOT = ROOT;
+    }
+
+    public Long getIdOrNull() {
+        if (isROOT()) {
+            return null;
+        }
+        return id;
+    }
+
+
 	@Override
 	public boolean equals(Object o) {
 		if (this == o)
@@ -83,7 +101,7 @@ public final class FolderRecord {
 
 	@Override
 	public String toString() {
-		return "FolderRecord{id=%d, parentFolderId=%d, name='%s'}".formatted(id, parentFolderId, name);
+		return "FolderRecord{id=%d, parentFolderId=%d, name='%s'}".formatted(getIdOrNull(), parentFolderId, name);
 	}
 
 
