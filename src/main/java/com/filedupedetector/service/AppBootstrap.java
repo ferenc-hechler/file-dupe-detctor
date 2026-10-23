@@ -1,11 +1,10 @@
 package com.filedupedetector.service;
 
-import com.filedupedetector.model.DuplicateGroup;
+import java.util.List;
+
 import com.filedupedetector.model.ScanLocation;
 import com.filedupedetector.persistence.FileRecordRepository;
 import com.filedupedetector.persistence.ScanLocationRepository;
-
-import java.util.List;
 
 /**
  * Loads all persisted {@link ScanLocation}s and existing duplicate groups on application
@@ -14,20 +13,17 @@ import java.util.List;
 public final class AppBootstrap {
 
     private final ScanLocationRepository scanLocationRepository;
-    private final DuplicateQueryService duplicateQueryService;
 
     public AppBootstrap(ScanLocationRepository scanLocationRepository, FileRecordRepository fileRecordRepository) {
         this.scanLocationRepository = scanLocationRepository;
-        this.duplicateQueryService = new DuplicateQueryServiceImpl(fileRecordRepository);
     }
 
-    public record StartupState(List<ScanLocation> locations, List<DuplicateGroup> duplicateGroups) {
+    public record StartupState(List<ScanLocation> locations) {
     }
 
     /** Loads persisted state synchronously; intended to be fast enough for startup (SC-004: &lt;5s). */
     public StartupState loadStartupState() {
         List<ScanLocation> locations = scanLocationRepository.findAll();
-        List<DuplicateGroup> duplicateGroups = duplicateQueryService.getAllDuplicateGroups();
-        return new StartupState(locations, duplicateGroups);
+        return new StartupState(locations);
     }
 }

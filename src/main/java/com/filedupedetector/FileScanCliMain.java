@@ -16,7 +16,6 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.filedupedetector.model.FileRecord;
 import com.filedupedetector.model.ScanLocation;
 import com.filedupedetector.model.ScanLocation.LocationType;
-import com.filedupedetector.model.ScanSession;
 import com.filedupedetector.pcloud.PCloudApiClient;
 import com.filedupedetector.persistence.FileRecordRepository;
 import com.filedupedetector.persistence.FolderRecordRepository;
@@ -24,11 +23,9 @@ import com.filedupedetector.persistence.JdbcConnectionManager;
 import com.filedupedetector.persistence.JdbcFileRecordRepository;
 import com.filedupedetector.persistence.JdbcFolderRecordRepository;
 import com.filedupedetector.persistence.JdbcScanLocationRepository;
-import com.filedupedetector.persistence.JdbcScanSessionRepository;
 import com.filedupedetector.persistence.ScanLocationRepository;
 import com.filedupedetector.scan.NioFileWalker;
 import com.filedupedetector.scan.Sha1HashService;
-import com.filedupedetector.service.DuplicateMatcher;
 import com.filedupedetector.service.ScanProgressListener;
 import com.filedupedetector.service.ScanService;
 import com.filedupedetector.service.ScanServiceImpl;
@@ -61,11 +58,9 @@ public class FileScanCliMain {
         this.scanService = new ScanServiceImpl(
                 new NioFileWalker(),
                 new Sha1HashService(),
-                new DuplicateMatcher(),
                 fileRecordRepository,
                 scanLocationRepository,
-                folderRecordRepository,
-                true);
+                folderRecordRepository);
 	}
 	
 	record VolumeInfo(String volName, String volType, long volSize, String volVSN) {}
@@ -192,22 +187,27 @@ public class FileScanCliMain {
 				status.update(totalEstimate, filesProcessed);
 			}
 			@Override
-			public void onSessionComplete(ScanSession result) {
+			public void onSessionComplete(long totalProcessed, long totalErrored, long totalMissing) {
 				synchronized (status) {
 					status.finished();
 					status.notifyAll();
 				}
 			}
 			@Override
-			public void onLocationUnavailable(ScanLocation location) {
-				System.out.println("WARNING: location unavailable: " + location.getRootPath());
+			public void onLocationUnavailable(String errorMessage) {
+				System.out.println("WARNING: location unavailable: " + errorMessage);
 			}
+			
 		};
 		List<ScanLocation> locations = scanLocationRepository.findAll();
         List<ScanLocation> locationsToScan = locations.stream()
 				.filter(loc -> loc.getDisplayName().equals(name))
 				.toList();
-		scanService.scanAsync(locationsToScan, listener);
+        if (locationsToScan.isEmpty()) {
+            throw new IllegalStateException("No scan location found with name '" + name + "'");
+        }
+        ScanLocation locationToScan = locationsToScan.get(0);
+		scanService.scanAsync(locationToScan, listener);
 		while (!status.status.equals("FINISHED")) {
 			System.out.println(status);
 			try {
@@ -296,14 +296,11 @@ public class FileScanCliMain {
 					.orElseGet(() -> scanLocationRepository.save(imported));
 			for (com.fasterxml.jackson.databind.JsonNode recordNode : locationNodes.get(i).path("fileRecords")) {
 				FileRecord record = new FileRecord();
-				record.setScanLocationId(target.getId());
-				record.setRelativePath(requireText(recordNode, "relativePath"));
+//				record.setScanLocationId(target.getId());
+//				record.setRelativePath(requireText(recordNode, "relativePath"));
 				record.setSizeBytes(recordNode.path("sizeBytes").asLong());
-				record.setContentHash(recordNode.hasNonNull("contentHash") ? recordNode.get("contentHash").asText() : null);
+//				record.setContentHash(recordNode.hasNonNull("contentHash") ? recordNode.get("contentHash").asText() : null);
 				record.setLastModifiedAt(java.time.Instant.parse(requireText(recordNode, "lastModifiedAt")));
-				record.setLastSeenAt(recordNode.hasNonNull("lastSeenAt")
-						? java.time.Instant.parse(recordNode.get("lastSeenAt").asText())
-						: java.time.Instant.now());
 				fileRecordRepository.upsert(record);
 				fileCount++;
 			}
@@ -315,16 +312,12 @@ public class FileScanCliMain {
 	private static ScanLocation toScanLocation(com.fasterxml.jackson.databind.JsonNode node) {
 		ScanLocation location = new ScanLocation();
 		location.setDisplayName(requireText(node, "displayName"));
-		location.setRootPathX(requireText(node, "rootPath"));
+//		location.setRootPathX(requireText(node, "rootPath"));
 		location.setVolName(requireText(node, "volName"));
 		location.setVolType(requireText(node, "volType"));
 		location.setVolSize(node.path("volSize").asLong(-1));
 		location.setVolVSN(requireText(node, "volVSN"));
 		location.setType(LocationType.valueOf(requireText(node, "type")));
-		location.setAvailable(node.path("available").asBoolean(true));
-		if (node.hasNonNull("lastScannedAt")) {
-			location.setLastScannedAt(java.time.Instant.parse(node.get("lastScannedAt").asText()));
-		}
 		return location;
 	}
 
@@ -371,7 +364,7 @@ public class FileScanCliMain {
 	}
 
 	private Map<String, Object> toExportMap(ScanLocation location) {
-		List<FileRecord> fileRecords = fileRecordRepository.findByLocation(location.getId());
+		List<FileRecord> fileRecords = fileRecordRepository.findByParentFolder(location.getRootFolderId());
 
 		Map<String, Object> map = new LinkedHashMap<>();
 		map.put("id", location.getId());
@@ -382,8 +375,6 @@ public class FileScanCliMain {
 		map.put("volSize", location.getVolSize());
 		map.put("volVSN", location.getVolVSN());
 		map.put("type", location.getType());
-		map.put("lastScannedAt", location.getLastScannedAt());
-		map.put("available", location.isAvailable());
 		map.put("fileRecords", fileRecords);
 		return map;
 	}

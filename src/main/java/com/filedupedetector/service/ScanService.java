@@ -11,5 +11,5 @@ public interface ScanService {
      * Runs (or re-runs) a scan over the given scan locations. MUST run off the Swing EDT when
      * invoked from the GUI; progress/completion is delivered via the listener.
      */
-    void scanAsync(List<ScanLocation> locations, ScanProgressListener listener);
+    void scanAsync(ScanLocation location, ScanProgressListener listener);
 }

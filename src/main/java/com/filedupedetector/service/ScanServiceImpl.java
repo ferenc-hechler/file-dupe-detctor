@@ -63,10 +63,10 @@ public final class ScanServiceImpl implements ScanService {
     }
 
     @Override
-    public void scanAsync(List<ScanLocation> locations, ScanProgressListener listener) {
+    public void scanAsync(ScanLocation location, ScanProgressListener listener) {
         executor.submit(() -> {
             try {
-                scanBlocking(locations, listener);
+                scanBlocking(location, listener);
             } catch (RuntimeException e) {
                 // FR-014/resilience: never let an unexpected error silently hang the caller
                 // (e.g. the GUI's "Scanning..." status) without any completion signal.
@@ -78,39 +78,30 @@ public final class ScanServiceImpl implements ScanService {
 
     /** Synchronous scan, usable directly by the Phase 3 console harness (T024) and tests. */
     public void scanBlocking(ScanLocation location, ScanProgressListener listener) {
-        Long locationId = location.getId();
 
         // Phase 1: walk every location first, so the size pre-filter (DuplicateMatcher) can see
         // ALL candidate files across ALL locations at once - a file that is "unique" within its
         // own folder may still duplicate a same-size file in a different scan location.
-        boolean anyInterrupted = false;
-            WalkedLocation walked = walkOneLocation(location);
-            if (w.unavailable()) {
-                anyInterrupted = true;
-                listener.onLocationUnavailable(location);
-            }
+        WalkedLocation walked = walkOneLocation(location);
+        if (walked.unavailable()) {
+            listener.onLocationUnavailable("could not access scan location " + location.getRootPath());
+        }
 
         // Phase 2: hash candidates and persist, per location.
         int totalProcessed = 0;
         int totalErrored = 0;
         int totalMissing = 0;
-        for (WalkedLocation w : walked) {
-            if (w.unavailable()) {
-                continue;
-            }
-            try {
-                LocationScanResult result = persistOneLocation(w, listener);
-                totalProcessed += result.processed();
-                totalErrored += result.errored();
-                totalMissing += result.missing();
-            } catch (RuntimeException e) {
-                // A catastrophic failure persisting one location (e.g. DB unavailable mid-scan)
-                // must not prevent other locations' already-gathered results from being reported
-                // (FR-014). Surface it the same way an unavailable location would be.
-                log.error("Failed to persist results for location {}: {}", w.location().getRootPath(), e.getMessage(), e);
-                anyInterrupted = true;
-                listener.onLocationUnavailable(e.getMessage());
-            }
+        try {
+            LocationScanResult result = persistOneLocation(walked, listener);
+            totalProcessed += result.processed();
+            totalErrored += result.errored();
+            totalMissing += result.missing();
+        } catch (RuntimeException e) {
+            // A catastrophic failure persisting one location (e.g. DB unavailable mid-scan)
+            // must not prevent other locations' already-gathered results from being reported
+            // (FR-014). Surface it the same way an unavailable location would be.
+            log.error("Failed to persist results for location {}: {}", walked.location().getRootPath(), e.getMessage(), e);
+            listener.onLocationUnavailable(e.getMessage());
         }
 
         listener.onSessionComplete(totalProcessed, totalErrored, totalMissing);
@@ -127,19 +118,15 @@ public final class ScanServiceImpl implements ScanService {
         Path root = Path.of(location.getRootPath());
         if (!java.nio.file.Files.exists(root)) {
             log.warn("Scan location unavailable: {}", location.getRootPath());
-            scanLocationRepository.markAvailability(location.getId(), false);
-            return new WalkedLocation(location, root, true, List.of(), List.of(), List.of());
+            return new WalkedLocation(location, root, true, List.of(), List.of());
         }
-        scanLocationRepository.markAvailability(location.getId(), true);
 
-        List<DuplicateMatcher.SizedPath> allFiles = new ArrayList<>();
         List<Path> erroredPaths = new ArrayList<>();
         List<Path> inaccessiblePaths = new ArrayList<>();
 
         fileWalker.walk(root, new FileVisitCallback() {
             @Override
             public void onFileFound(Path absolutePath, long sizeBytes, FileTime lastModified) {
-                allFiles.add(new DuplicateMatcher.SizedPath(absolutePath, sizeBytes));
             }
 
             @Override
@@ -155,11 +142,10 @@ public final class ScanServiceImpl implements ScanService {
             }
         });
 
-        return new WalkedLocation(location, root, false, allFiles, erroredPaths, inaccessiblePaths);
+        return new WalkedLocation(location, root, false, erroredPaths, inaccessiblePaths);
     }
 
-    private LocationScanResult persistOneLocation(WalkedLocation w, Set<DuplicateMatcher.SizedPath> hashCandidates,
-                                                   ScanProgressListener listener) {
+    private LocationScanResult persistOneLocation(WalkedLocation w, ScanProgressListener listener) {
         ScanLocation location = w.location();
         Path root = w.root();
         Set<String> relativePathsSeen = new HashSet<>();
