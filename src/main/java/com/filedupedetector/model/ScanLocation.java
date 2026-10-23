@@ -24,7 +24,7 @@ public final class ScanLocation {
 	private long volSize;
 	private String volVSN;
 	private LocationType type;
-	private long rootFolderId;
+	private Long rootFolderId;
 
 	public ScanLocation() {
 		this.volName = "?";
@@ -84,7 +84,7 @@ public final class ScanLocation {
 	private void populateVolumeInfo(String rootPathValue) {
 		try {
 			VolInfo info = new VolInfo(Path.of(rootPathValue));
-			this.volName = PCloudApiClient.getPCloudEnv();
+			this.volName = info.getVolName();
 			this.volType = info.getVolType();
 			this.volSize = info.getVolSize();
 			this.volVSN = info.getVolVSN();
@@ -153,11 +153,11 @@ public final class ScanLocation {
 		this.type = type;
 	}
 
-	public long getRootFolderId() {
+	public Long getRootFolderId() {
 		return rootFolderId;
 	}
 
-	public void setRootFolderId(long rootFolderId) {
+	public void setRootFolderId(Long rootFolderId) {
 		this.rootFolderId = rootFolderId;
 	}
 

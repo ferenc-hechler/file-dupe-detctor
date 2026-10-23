@@ -19,10 +19,10 @@ public final class JdbcFolderRecordRepository implements FolderRecordRepository 
         this.connectionManager = connectionManager;
     }
 
-    public FolderRecord findById(long folderId) {
-    	if (folderId <= 0) {
-    		return null;
-    	}
+    public FolderRecord findById(Long folderId) {
+        	if (folderId == null) {
+        		return null;
+        	}
         try (Connection conn = connectionManager.openConnection()) {
         	return internFindById(conn, folderId);
 		} catch (SQLException e) {
@@ -31,11 +31,11 @@ public final class JdbcFolderRecordRepository implements FolderRecordRepository 
 		}
     }
     
-    private FolderRecord internFindById(Connection conn, long folderId) throws SQLException {
+    private FolderRecord internFindById(Connection conn, Long folderId) throws SQLException {
         String sql = SELECT_COLUMNS + " WHERE id = ?";
-    	if (folderId <= 0) {
-    		return null;
-    	}
+        	if (folderId == null) {
+        		return null;
+        	}
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, folderId);
             try (ResultSet rs = ps.executeQuery()) {
@@ -68,12 +68,12 @@ public final class JdbcFolderRecordRepository implements FolderRecordRepository 
     
     
     @Override
-    public List<FolderRecord> findByParentFolder(long parentFolderId) {
+    public List<FolderRecord> findByParentFolder(Long parentFolderId) {
         String sql = SELECT_COLUMNS + "WHERE parent_folder_id = ? ";
         try (Connection conn = connectionManager.openConnection();
             PreparedStatement ps = conn.prepareStatement(sql)) {
             List<FolderRecord> result = new ArrayList<>();
-            ps.setLong(1, parentFolderId);
+            ps.setObject(1, parentFolderId, java.sql.Types.BIGINT);  // allow null for parent_folder_id
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     result.add(mapRow(rs));
@@ -88,11 +88,11 @@ public final class JdbcFolderRecordRepository implements FolderRecordRepository 
 
 
     @Override
-    public FolderRecord findByParentFolderAndName(long parentFolderId, String name) {
+    public FolderRecord findByParentFolderAndName(Long parentFolderId, String name) {
     	String sql = SELECT_COLUMNS + "WHERE parent_folder_id = ? AND name = ?";
         try (Connection conn = connectionManager.openConnection()) {
 	        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-	            ps.setLong(1, parentFolderId);
+	            ps.setObject(1, parentFolderId, java.sql.Types.BIGINT);  // allow null for parent_folder_id
 	            ps.setString(2, name);
 	            try (ResultSet rs = ps.executeQuery()) {
 	            	FolderRecord result = null;
@@ -125,6 +125,41 @@ public final class JdbcFolderRecordRepository implements FolderRecordRepository 
         }
     }
 
+    @Override
+    public FolderRecord upsert(FolderRecord record) {
+        try (Connection conn = connectionManager.openConnection()) {
+            if (record.getId() > 0) {
+                // nothing to update for a folder
+//        		// Update existing record
+//        		String updateSql = "UPDATE folder_record SET name = ?, parent_folder_id = ? WHERE id = ?";
+//        		try (PreparedStatement ps = conn.prepareStatement(updateSql)) {
+//        			ps.setString(1, record.getName());
+//        			ps.setLong(2, record.getParentFolderId());
+//        			ps.setLong(3, record.getId());
+//        			ps.executeUpdate();
+//        		}
+            } else {
+                // Insert new record
+                String insertSql = "INSERT INTO folder_record (name, parent_folder_id) VALUES (?, ?)";
+                try (PreparedStatement ps = conn.prepareStatement(insertSql, PreparedStatement.RETURN_GENERATED_KEYS)) {
+                    ps.setString(1, record.getName());
+                    ps.setObject(2, record.getParentFolderId(), java.sql.Types.BIGINT);  // allow null for parent_folder_id
+                    ps.executeUpdate();
+                    try (ResultSet generatedKeys = ps.getGeneratedKeys()) {
+                        if (generatedKeys.next()) {
+                            record.setId(generatedKeys.getLong(1));
+                        } else {
+                            throw new SQLException("Creating folder_record failed, no ID obtained.");
+                        }
+                    }
+                }
+            }
+            return record;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to upsert FolderRecord: " + record, e);
+        }
+    }
+    
     private FolderRecord mapRow(ResultSet rs) throws SQLException {
         FolderRecord record = new FolderRecord();
         record.setId(rs.getLong("id"));

@@ -40,6 +40,16 @@ public final class JdbcScanLocationRepository implements ScanLocationRepository 
         }
     }
 
+    @Override
+    public ScanLocation findByDisplayName(String displayName) {
+        try (Connection conn = connectionManager.openConnection()) {
+            Optional<ScanLocation> existingSL = findByDisplayName(conn, displayName);
+            return existingSL.orElse(null);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to lookup ScanLocation by displayName: " + displayName, e);
+        }
+    }
+
     public Optional<ScanLocation> findByDisplayName(Connection conn, String displayName) throws SQLException {
         String sql = SELECT_COLUMNS + " WHERE display_name = ? ";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -59,7 +69,7 @@ public final class JdbcScanLocationRepository implements ScanLocationRepository 
 
     private void insertNew(Connection conn, ScanLocation location) throws SQLException {
         String sql = "INSERT INTO scan_location "
-                + "(display_name, root_path, vol_name, vol_type, vol_size, vol_vsn, type, rootFolderId) "
+                + "(display_name, root_path, vol_name, vol_type, vol_size, vol_vsn, type, root_folder_id) "
                 + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, location.getDisplayName());
@@ -69,7 +79,7 @@ public final class JdbcScanLocationRepository implements ScanLocationRepository 
             ps.setLong(  5, location.getVolSize());
             ps.setString(6, location.getVolVSN());
             ps.setString(7, location.getType().name());
-            ps.setLong(  8, location.getRootFolderId());
+            ps.setObject(8, location.getRootFolderId(), java.sql.Types.BIGINT);  // allow null for root_folder_id
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (keys.next()) {

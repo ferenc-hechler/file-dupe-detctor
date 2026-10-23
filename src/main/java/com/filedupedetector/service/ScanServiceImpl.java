@@ -152,51 +152,44 @@ public final class ScanServiceImpl implements ScanService {
         int processed = 0;
         int errored = w.erroredPaths().size() + w.inaccessiblePaths().size();
 
-        for (DuplicateMatcher.SizedPath sized : w.files()) {
-            String relativePath = root.relativize(sized.path()).toString();
+        for (Path p: w.erroredPaths()) {
+            String relativePath = root.relativize(p).toString();
             relativePathsSeen.add(relativePath);
 
             FileRecord record = new FileRecord();
-            record.setScanLocationId(location.getId());
-            record.setRelativePath(relativePath);
-            record.setSizeBytes(sized.sizeBytes());
+//            record.setScanLocationId(location.getId());
+            record.setName(relativePath);
+//            record.setSizeBytes(sized.sizeBytes());
             try {
                 // Truncate to millisecond precision: DB TIMESTAMP round-tripping and differing
                 // filesystem mtime resolutions can otherwise cause false "changed" detections
                 // between an in-memory Instant and the value reloaded from persistence.
-                record.setLastModifiedAt(java.nio.file.Files.getLastModifiedTime(sized.path()).toInstant()
+                record.setLastModifiedAt(java.nio.file.Files.getLastModifiedTime(p).toInstant()
                         .truncatedTo(java.time.temporal.ChronoUnit.MILLIS));
             } catch (IOException e) {
                 record.setLastModifiedAt(Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS));
             }
-            record.setLastSeenAt(Instant.now());
 
-            if (hashCandidates.contains(sized)) {
-                String reusableHash = findReusableHash(location.getId(), relativePath, record.getSizeBytes(),
-                        record.getLastModifiedAt());
-                if (reusableHash != null) {
-                    // FR-006: unchanged size/mtime since last scan -> reuse persisted hash, skip re-hashing.
-                    record.setContentHash(reusableHash);
-                } else {
-                    try {
-                        // FR-007: new file, or size/mtime changed since last scan -> (re)compute hash.
-                        record.setContentHash(hashService.computeHash(sized.path()));
-                    } catch (IOException e) {
-                        // Unreadable files are not persisted; dropping the path from the "seen" set
-                        // also removes a stale record from an earlier scan.
-                        log.debug("Failed to hash {}: {}", sized.path(), e.getMessage());
-                        relativePathsSeen.remove(relativePath);
-                        errored++;
-                        processed++;
-                        listener.onProgress(processed, w.files().size());
-                        continue;
-                    }
-                }
+            String reusableHash = findReusableHash(location.getId(), relativePath, record.getSizeBytes(),
+                    record.getLastModifiedAt());
+            if (reusableHash != null) {
+                // FR-006: unchanged size/mtime since last scan -> reuse persisted hash, skip re-hashing.
+                record.setSha1hash(reusableHash);
             } else {
-                // Unique size among this scan: no need to hash (research.md decision 4).
-                record.setContentHash(null);
+                try {
+                    // FR-007: new file, or size/mtime changed since last scan -> (re)compute hash.
+                    record.setSha1hash(hashService.computeHash(p));
+                } catch (IOException e) {
+                    // Unreadable files are not persisted; dropping the path from the "seen" set
+                    // also removes a stale record from an earlier scan.
+                    log.debug("Failed to hash {}: {}", p, e.getMessage());
+                    relativePathsSeen.remove(relativePath);
+                    errored++;
+                    processed++;
+                    listener.onProgress(processed, w.erroredPaths().size());
+                    continue;
+                }
             }
-
             try {
                 fileRecordRepository.upsert(record);
             } catch (RuntimeException e) {
@@ -206,17 +199,16 @@ public final class ScanServiceImpl implements ScanService {
                 errored++;
             }
             processed++;
-            listener.onProgress(processed, w.files().size());
+            listener.onProgress(processed, w.erroredPaths().size());
         }
 
         // FR-008: any previously stored record for this location not seen in this walk (deleted,
         // unreadable or inaccessible files) is removed.
-        int missing = fileRecordRepository.deleteMissing(location.getId(), relativePathsSeen);
+//        int missing = fileRecordRepository.deleteMissing(location.getId(), relativePathsSeen);
 
-        location.setLastScannedAt(Instant.now());
         scanLocationRepository.save(location);
 
-        return new LocationScanResult(processed, errored, missing);
+        return new LocationScanResult(processed, errored, 0);
     }
 
     /**
@@ -226,13 +218,6 @@ public final class ScanServiceImpl implements ScanService {
      */
     private String findReusableHash(long scanLocationId, String relativePath, long currentSize,
                                      Instant currentLastModified) {
-        return fileRecordRepository.findByLocationAndPath(scanLocationId, relativePath)
-                .filter(existing -> existing.getContentHash() != null)
-                .filter(existing -> existing.getSizeBytes() == currentSize)
-                .filter(existing -> existing.getLastModifiedAt() != null
-                        && existing.getLastModifiedAt().truncatedTo(java.time.temporal.ChronoUnit.MILLIS)
-                                .equals(currentLastModified.truncatedTo(java.time.temporal.ChronoUnit.MILLIS)))
-                .map(FileRecord::getContentHash)
-                .orElse(null);
+        return null;
     }
 }

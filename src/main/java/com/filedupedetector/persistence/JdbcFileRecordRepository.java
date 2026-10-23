@@ -43,7 +43,7 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
 
     @Override
     public List<FileRecord> findBySHA1(String sha1hash) {
-        String sql = SELECT_COLUMNS + "WHERE sha1hash = ? ";
+        String sql = SELECT_COLUMNS + "WHERE sha1_hash = ? ";
         try (Connection conn = connectionManager.openConnection();
             PreparedStatement ps = conn.prepareStatement(sql)) {
             List<FileRecord> result = new ArrayList<>();
@@ -109,7 +109,7 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
     }
 
     private void insertNew(Connection conn, FileRecord record) throws SQLException {
-        String sql = "INSERT INTO file_record (name, parent_folder_id, size_bytes, sha1hash, last_modified_at) "
+        String sql = "INSERT INTO file_record (name, parent_folder_id, size_bytes, sha1_hash, last_modified_at) "
         		+ "VALUES (?, ?, ?, ?, ?)";
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, record.getName());
@@ -127,7 +127,7 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
     }
 
     private void updateExisting(Connection conn, FileRecord record) throws SQLException {
-        String sql = "UPDATE file_record SET size_bytes = ?, sha1hash = ?, last_modified_at = ?, "
+        String sql = "UPDATE file_record SET size_bytes = ?, sha1_hash = ?, last_modified_at = ?, "
                 + "last_seen_at = ? WHERE id = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, record.getSizeBytes());
@@ -163,7 +163,7 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
         record.setName(rs.getString("name"));
         record.setParentFolderId(rs.getLong("parent_folder_id"));
         record.setSizeBytes(rs.getLong("size_bytes"));
-        record.setSha1hash(rs.getString("sha1hash"));
+        record.setSha1hash(rs.getString("sha1_hash"));
         Timestamp lastModified = rs.getTimestamp("last_modified_at");
         record.setLastModifiedAt(lastModified == null ? null : lastModified.toInstant());
         return record;

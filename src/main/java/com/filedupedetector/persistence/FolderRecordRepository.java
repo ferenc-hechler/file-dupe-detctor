@@ -6,14 +6,16 @@ import com.filedupedetector.model.FolderRecord;
 
 public interface FolderRecordRepository {
 
-    FolderRecord findById(long folderId);
+    FolderRecord findById(Long folderId);
     
-    List<FolderRecord> findByParentFolder(long parentFolderId);
+    List<FolderRecord> findByParentFolder(Long parentFolderId);
     
-    FolderRecord findByParentFolderAndName(long parentFolderId, String name);
+    FolderRecord findByParentFolderAndName(Long parentFolderId, String name);
     
-	String getFullPath(FolderRecord fileRecord);
+	String getFullPath(FolderRecord folderRecord);
 
+	FolderRecord upsert(FolderRecord folderRecord);
+	
     void deleteByID(List<Long> idsToDelete);
     
 }

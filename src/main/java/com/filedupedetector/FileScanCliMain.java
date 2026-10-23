@@ -107,12 +107,10 @@ public class FileScanCliMain {
 		location.setType(LocationType.LOCAL);
 		location.setRootPathWithVolInfo(rootPath.toString());
 
-		var existing = scanLocationRepository.findAll().stream()
-				.filter(loc -> loc.getDisplayName().equals(name))
-				.findFirst();
-		if (existing.isPresent()) {
+		var existing = scanLocationRepository.findByDisplayName(name);
+		if (existing != null) {
 			// The location already exists: it must still describe the same folder on the same volume.
-			verifySameLocation(existing.get(), location);
+			verifySameLocation(existing, location);
 			return;
 		}
 		scanLocationRepository.save(location);

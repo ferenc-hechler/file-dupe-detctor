@@ -3,21 +3,28 @@ package com.filedupedetector.model;
 import java.util.Objects;
 
 /**
- * Persisted information about a single scanned file (FR-005).
+ * Persisted information about a folder
  */
 public final class FolderRecord {
 
 	private long id;
 	private String name;
-	private long parentFolderId;
+	private Long parentFolderId;
+	
+	private transient boolean isNew;
+	private transient String fullPath;
 
 	public FolderRecord() {
+	    this.isNew = false;
+	    this.fullPath = null;
 	}
 
-	public FolderRecord(long id, long parentFolderId, String name) {
+	public FolderRecord(long id, Long parentFolderId, String name) {
 		this.id = id;
 		this.name = Objects.requireNonNull(name, "name must not be null");
 		this.parentFolderId = parentFolderId;
+		this.isNew = (id == -1);
+		this.fullPath = null;
 	}
 
 	public long getId() {
@@ -28,11 +35,11 @@ public final class FolderRecord {
 		this.id = id;
 	}
 
-	public long getParentFolderId() {
+	public Long getParentFolderId() {
 		return parentFolderId;
 	}
 
-	public void setParentFolderId(long parentFolderId) {
+	public void setParentFolderId(Long parentFolderId) {
 		this.parentFolderId = parentFolderId;
 	}
 	
@@ -44,7 +51,22 @@ public final class FolderRecord {
 		this.name = name;
 	}
 	
+    public void setNew(boolean isNew) {
+        this.isNew = isNew;
+    }
 
+    public boolean isNew() {
+        return isNew;
+    }
+    
+    public void setFullPath(String fulltPath) {
+         this.fullPath = fulltPath;   
+    }
+    
+    public String getFullPath() {
+        return fullPath;
+    }
+    
 	@Override
 	public boolean equals(Object o) {
 		if (this == o)
@@ -61,6 +83,8 @@ public final class FolderRecord {
 
 	@Override
 	public String toString() {
-		return "FileRecord{id=%d, parentFolderId=%d, name='%s'}".formatted(id, parentFolderId, name);
+		return "FolderRecord{id=%d, parentFolderId=%d, name='%s'}".formatted(id, parentFolderId, name);
 	}
+
+
 }

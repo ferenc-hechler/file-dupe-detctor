@@ -26,14 +26,27 @@ public final class JdbcConnectionManager implements AutoCloseable {
     private Connection keepAliveConnection;
 
     public JdbcConnectionManager() {
-        this(defaultDatabasePath());
+        this(defaultDatabasePath(), false);
     }
-
     public JdbcConnectionManager(Path databasePath) {
+        this(databasePath, false);
+    }
+    public JdbcConnectionManager(boolean zapDatabase) {
+        this(defaultDatabasePath(), zapDatabase);
+    }
+    public JdbcConnectionManager(Path databasePath, boolean zapDatabase) {
         try {
             Files.createDirectories(databasePath.getParent());
         } catch (IOException e) {
             throw new UncheckedIOException("Could not create database directory: " + databasePath.getParent(), e);
+        }
+        if (zapDatabase) {
+            try {
+                Files.deleteIfExists(databasePath.resolveSibling(databasePath.getFileName() + ".mv.db"));
+                log.info("Deleted existing database file: {}", databasePath);
+            } catch (IOException e) {
+                throw new UncheckedIOException("Could not delete existing database file: " + databasePath, e);
+            }
         }
         // H2 appends .mv.db automatically; AUTO_SERVER allows a second local process to inspect the DB file.
         this.jdbcUrl = "jdbc:h2:file:" + databasePath.toAbsolutePath()
@@ -60,6 +73,7 @@ public final class JdbcConnectionManager implements AutoCloseable {
                 for (String rawStatement : ddl.split(";")) {
                     String sql = rawStatement.strip();
                     if (!sql.isEmpty()) {
+                        // System.out.println("Executing SQL: " + sql);
                         statement.execute(sql);
                     }
                 }
