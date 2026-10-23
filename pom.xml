@@ -14,7 +14,7 @@
         persists scan results, and visualizes them in a Swing tree view.</description>
 
     <properties>
-        <maven.compiler.release>17</maven.compiler.release>
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- <main.class>com.filedupedetector.Main</main.class> -->
         <main.class>com.filedupedetector.FileScanCliMain</main.class>

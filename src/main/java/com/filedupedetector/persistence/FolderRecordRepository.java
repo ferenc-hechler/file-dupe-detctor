@@ -10,6 +10,8 @@ public interface FolderRecordRepository {
     
     List<FolderRecord> findByParentFolder(Long parentFolderId);
     
+    List<Long> findIDsByParentFolder(Long parentFolderId);
+    
     FolderRecord findByParentFolderAndName(Long parentFolderId, String name);
     
 	String getFullPath(FolderRecord folderRecord);
@@ -17,5 +19,7 @@ public interface FolderRecordRepository {
 	FolderRecord upsert(FolderRecord folderRecord);
 	
     void deleteByID(List<Long> idsToDelete);
+    
+    void deleteByID(Long idToDelete);
     
 }

@@ -8,6 +8,8 @@ public interface FileRecordRepository {
 
     List<FileRecord> findByParentFolder(long parentFolderId);
     
+    List<Long> findIDsByParentFolder(long parentFolderId);
+    
     FileRecord findByParentFolderAndName(long parentFolderId, String name);
     
 	List<FileRecord> findBySHA1(String sha1hash);

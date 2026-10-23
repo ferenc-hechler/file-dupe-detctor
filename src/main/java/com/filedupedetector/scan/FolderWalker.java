@@ -10,6 +10,7 @@ import java.nio.file.attribute.DosFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Stack;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,26 +29,35 @@ public final class FolderWalker {
     record FolderEvent(Path folder, List<FileEntry> files, List<Path> subFolders) {
     }
     
+    record FolderAction(Path folder, BasicFileAttributes attrs, boolean leave) {
+    }
+    
     public void walk(Path rootPath, FolderVisitor visitor) {
         if (!Files.exists(rootPath)) {
             log.warn("Scan root path does not exist or is not accessible: {}", rootPath);
             visitor.onError(rootPath, new IOException("Root path does not exist or is not accessible: " + rootPath));
             return;
         }
-        LinkedList<Path> queue = new LinkedList<>();
-        queue.add(rootPath);
+        Stack<FolderAction> stack = new Stack<>();
+        BasicFileAttributes attrs;
+        try {
+            attrs = Files.readAttributes(rootPath, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        } catch (IOException e) {
+            attrs = null;
+        }
+        stack.push(new FolderAction(rootPath, attrs, true));
+        stack.push(new FolderAction(rootPath, attrs, false));
 
-        while (!queue.isEmpty()) {
+        while (!stack.isEmpty()) {
             
-            Path folder = queue.poll();
-            if (folder == null) {
+            FolderAction action = stack.pop();
+            Path folder = action.folder();
+            attrs = action.attrs();
+            if (action.leave()) {
                 visitor.postVisitDirectory(folder, null);
                 continue;
             }
-            
-            BasicFileAttributes attrs = null;
             visitor.preVisitDirectory(folder, attrs);
-
             
             List<FileEntry> files = new ArrayList<>();
             List<Path> subFolders = new ArrayList<>();
@@ -71,8 +81,17 @@ public final class FolderWalker {
                 visitor.onError(folder, new IOException("Unexpected error visiting folder: " + folder, e));
             }
             // Insert at the front, keeping sorted order => DFS
-            queue.addAll(0, null);
-            queue.addAll(0, subFolders);
+            subFolders = subFolders.reversed();
+            for (Path subFolder : subFolders) {
+                BasicFileAttributes subAttrs;
+                try {
+                    subAttrs = Files.readAttributes(subFolder, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                } catch (IOException e) {
+                    subAttrs = null;
+                }
+                stack.push(new FolderAction(subFolder, subAttrs, true));
+                stack.push(new FolderAction(subFolder, subAttrs, false));
+            }
         }
     }
 

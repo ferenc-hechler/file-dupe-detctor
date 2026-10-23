@@ -37,7 +37,26 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
             }
         } catch (SQLException e) {
             throw new IllegalStateException(
-                    "Failed to look up FileRecord for parentFolderId=" + parentFolderId, e);
+                    "Failed to look up FileRecords for parentFolderId=" + parentFolderId, e);
+        }
+    }
+
+    @Override
+    public List<Long> findIDsByParentFolder(long parentFolderId) {
+        String sql = "SELECT ID FROM file_record WHERE parent_folder_id = ? ";
+        try (Connection conn = connectionManager.openConnection();
+            PreparedStatement ps = conn.prepareStatement(sql)) {
+            List<Long> result = new ArrayList<>();
+            ps.setLong(1, parentFolderId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(rs.getLong(1));
+                }
+                return result;
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException(
+                    "Failed to look up FileRecordIDs for parentFolderId=" + parentFolderId, e);
         }
     }
 

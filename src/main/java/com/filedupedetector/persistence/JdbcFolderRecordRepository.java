@@ -65,6 +65,26 @@ public final class JdbcFolderRecordRepository implements FolderRecordRepository 
 
 
     
+    @Override
+    public List<Long> findIDsByParentFolder(Long parentFolderId) {
+        String sql = "SELECT id from folder_record WHERE parent_folder_id = ? ";
+        try (Connection conn = connectionManager.openConnection();
+            PreparedStatement ps = conn.prepareStatement(sql)) {
+            List<Long> result = new ArrayList<>();
+            ps.setObject(1, parentFolderId, java.sql.Types.BIGINT);  // allow null for parent_folder_id
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(rs.getLong("id"));
+                }
+                return result;
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException(
+                    "Failed to look up FolderRecordIDs for parentFolderId=" + parentFolderId, e);
+        }
+    }
+
+
     
     
     @Override
@@ -106,6 +126,12 @@ public final class JdbcFolderRecordRepository implements FolderRecordRepository 
             throw new IllegalStateException(
                     "Failed to look up FileRecord by folderId="+parentFolderId+" and name=" + name, e);
         }
+    }
+
+    
+    @Override
+    public void deleteByID(Long idToDelete) {
+        deleteByID(List.of(idToDelete));
     }
 
     @Override
