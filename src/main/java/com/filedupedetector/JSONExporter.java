@@ -21,6 +21,7 @@ import com.filedupedetector.persistence.JdbcFileRecordRepository;
 import com.filedupedetector.persistence.JdbcFolderRecordRepository;
 import com.filedupedetector.persistence.JdbcScanLocationRepository;
 import com.filedupedetector.persistence.ScanLocationRepository;
+import com.filedupedetector.utils.AppUtils;
 
 
 public class JSONExporter {
@@ -57,7 +58,7 @@ public class JSONExporter {
 	 * otherwise nothing is imported and an error is thrown.
 	 */
 	private void importFile(String importFile) {
-		Path source = Paths.get(importFile).toAbsolutePath().normalize();
+		Path source = AppUtils.normAbsPath(importFile);
 		com.fasterxml.jackson.databind.JsonNode root;
 		try {
 			root = EXPORT_MAPPER.readTree(source.toFile());
@@ -137,7 +138,7 @@ public class JSONExporter {
 		List<ScanLocation> scanLocations = scanLocationRepository.findAll();
 		System.out.println("Exporting " + scanLocations.size() + " scan locations to " + exportFile);
 
-		Path targetPath = Paths.get(exportFile).toAbsolutePath().normalize();
+		Path targetPath = AppUtils.normAbsPath(exportFile);
 		try {
 			Path parentDir = targetPath.getParent();
 			if (parentDir != null) {

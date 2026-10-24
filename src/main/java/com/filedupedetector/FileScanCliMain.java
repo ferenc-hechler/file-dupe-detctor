@@ -29,6 +29,7 @@ import com.filedupedetector.scan.Sha1HashService;
 import com.filedupedetector.service.ScanProgressListener;
 import com.filedupedetector.service.ScanService;
 import com.filedupedetector.service.ScanServiceImpl;
+import com.filedupedetector.utils.AppUtils;
 
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
@@ -103,7 +104,7 @@ public class FileScanCliMain {
 	public void addScanFolder(String name, String folderPath) {
 		ScanLocation location = new ScanLocation();
 		location.setDisplayName(name);
-		Path rootPath = Paths.get(folderPath).toAbsolutePath().normalize();
+		Path rootPath = AppUtils.normAbsPath(folderPath);
 		location.setType(LocationType.LOCAL);
 		location.setRootPathWithVolInfo(rootPath.toString());
 
@@ -261,7 +262,7 @@ public class FileScanCliMain {
 	 * otherwise nothing is imported and an error is thrown.
 	 */
 	private void importFile(String importFile) {
-		Path source = Paths.get(importFile).toAbsolutePath().normalize();
+		Path source = AppUtils.normAbsPath(importFile);
 		com.fasterxml.jackson.databind.JsonNode root;
 		try {
 			root = EXPORT_MAPPER.readTree(source.toFile());
@@ -341,7 +342,7 @@ public class FileScanCliMain {
 		List<ScanLocation> scanLocations = scanLocationRepository.findAll();
 		System.out.println("Exporting " + scanLocations.size() + " scan locations to " + exportFile);
 
-		Path targetPath = Paths.get(exportFile).toAbsolutePath().normalize();
+		Path targetPath = AppUtils.normAbsPath(exportFile);
 		try {
 			Path parentDir = targetPath.getParent();
 			if (parentDir != null) {

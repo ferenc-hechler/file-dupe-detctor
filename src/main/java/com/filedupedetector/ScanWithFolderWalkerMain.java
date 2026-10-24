@@ -27,6 +27,7 @@ import com.filedupedetector.scan.FolderVisitor;
 import com.filedupedetector.scan.FolderWalker;
 import com.filedupedetector.scan.HashService;
 import com.filedupedetector.scan.Sha1HashService;
+import com.filedupedetector.utils.AppUtils;
 
 public final class ScanWithFolderWalkerMain {
 
@@ -212,7 +213,7 @@ public final class ScanWithFolderWalkerMain {
             folderCount++;
             FolderRecord oldCurrentFolder = currentFolder;
             dirStack.push(currentFolder);
-            String folderName = currentFolder.isROOT() ? folder.toString() : folder.getFileName().toString();
+            String folderName = currentFolder.isROOT() ? AppUtils.normFilename(folder) : folder.getFileName().toString();
             currentFolder = null;
             if (oldCurrentFolder.isROOT() || !oldCurrentFolder.isNew()) {
                 FolderRecord existingFolder = folderRecordRepository.findByParentFolderAndName(oldCurrentFolder.getIdOrNull(), folderName);
@@ -271,9 +272,9 @@ public final class ScanWithFolderWalkerMain {
     public ScanLocation retrieveScanLocation(String name, String folderPath) {
         ScanLocation location = new ScanLocation();
         location.setDisplayName(name);
-        Path rootPath = Paths.get(folderPath).toAbsolutePath().normalize();
+        Path rootPath = AppUtils.normAbsPath(folderPath);
         location.setType(LocationType.LOCAL);
-        location.setRootPathWithVolInfo(rootPath.toString());
+        location.setRootPathWithVolInfo(AppUtils.normFilename(rootPath));
 
         var existing = scanLocationRepository.findByDisplayName(name);
         if (existing != null) {
@@ -291,7 +292,7 @@ public final class ScanWithFolderWalkerMain {
 
     
     private WalkResult walkFolders(String folder, long countFiles) {
-    	folder = Paths.get(folder).toAbsolutePath().normalize().toString();
+    	folder = AppUtils.normFilename(Paths.get(folder).toAbsolutePath());;
         FolderWalker walker = new FolderWalker();
         ScanLocation location = retrieveScanLocation(folder, folder);
         MyFolderVisitor visitor = new MyFolderVisitor(location, countFiles);
@@ -329,9 +330,9 @@ public final class ScanWithFolderWalkerMain {
     public static void main(String[] args) {
         ScanWithFolderWalkerMain scanApp = new ScanWithFolderWalkerMain();
         
-        scanApp.showDBFiles(10);
+        scanApp.showDBFiles(2);
         scanApp.scanFileFolder("./input/test");
-        scanApp.showDBFiles(10);
+        scanApp.showDBFiles(3);
     }
 
 

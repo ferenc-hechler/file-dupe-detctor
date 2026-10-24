@@ -21,6 +21,7 @@ import com.filedupedetector.persistence.JdbcFileRecordRepository;
 import com.filedupedetector.persistence.JdbcFolderRecordRepository;
 import com.filedupedetector.persistence.JdbcScanLocationRepository;
 import com.filedupedetector.persistence.ScanLocationRepository;
+import com.filedupedetector.utils.AppUtils;
 
 public final class FileWalkerPerfTestMain {
 
@@ -229,7 +230,7 @@ public final class FileWalkerPerfTestMain {
     public ScanLocation retrieveScanLocation(String name, String folderPath) {
         ScanLocation location = new ScanLocation();
         location.setDisplayName(name);
-        Path rootPath = Paths.get(folderPath).toAbsolutePath().normalize();
+        Path rootPath = AppUtils.normAbsPath(folderPath);
         location.setType(LocationType.LOCAL);
         location.setRootPathWithVolInfo(rootPath.toString());
 
