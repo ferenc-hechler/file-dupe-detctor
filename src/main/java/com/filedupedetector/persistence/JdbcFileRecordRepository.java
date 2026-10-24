@@ -146,12 +146,12 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
     }
 
     private void updateExisting(Connection conn, FileRecord record) throws SQLException {
-        String sql = "UPDATE file_record SET size_bytes = ?, sha1_hash = ?, last_modified_at = ?, "
-                + "last_seen_at = ? WHERE id = ?";
+        String sql = "UPDATE file_record SET size_bytes = ?, last_modified_at = ?, sha1_hash = ?, "
+                + "WHERE id = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, record.getSizeBytes());
-            ps.setString(2, record.getSha1hash());
-            ps.setTimestamp(3, Timestamp.from(record.getLastModifiedAt()));
+            ps.setTimestamp(2, Timestamp.from(record.getLastModifiedAt()));
+            ps.setString(3, record.getSha1hash());
             ps.setLong(4, record.getId());
             ps.executeUpdate();
         }

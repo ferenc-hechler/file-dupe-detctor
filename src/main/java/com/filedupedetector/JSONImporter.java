@@ -1,15 +1,18 @@
 package com.filedupedetector;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
+import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+
 import com.filedupedetector.model.FileRecord;
 import com.filedupedetector.model.FolderRecord;
 import com.filedupedetector.model.ScanLocation;
@@ -29,175 +32,203 @@ public class JSONImporter {
 	ScanLocationRepository scanLocationRepository;
 	FileRecordRepository fileRecordRepository;
 	FolderRecordRepository folderRecordRepository;
-            
-	public JSONImporter() {
-        JdbcConnectionManager connectionManager = new JdbcConnectionManager();
-        this.scanLocationRepository = new JdbcScanLocationRepository(connectionManager);
-        this.fileRecordRepository = new JdbcFileRecordRepository(connectionManager);
-        this.folderRecordRepository = new JdbcFolderRecordRepository(connectionManager);
-	}
-	
 
-	public List<String> getLocationNames() {
-		List<ScanLocation> scanLocations = scanLocationRepository.findAll();
-		List<String> result = scanLocations.stream().map(loc -> loc.getDisplayName()).toList();
-		return result;
+	private int fileCount;
+	private int locationCount;
+
+	public JSONImporter() {
+		JdbcConnectionManager connectionManager = new JdbcConnectionManager();
+		this.scanLocationRepository = new JdbcScanLocationRepository(connectionManager);
+		this.fileRecordRepository = new JdbcFileRecordRepository(connectionManager);
+		this.folderRecordRepository = new JdbcFolderRecordRepository(connectionManager);
 	}
-	
-	private void listRoots() {
-		List<String> roots = getLocationNames();
-		System.out.println("Scan roots:");
-		for (String root : roots) {
-			System.out.println(" - " + root);
-		}
-	}
+
+	private static final ObjectMapper MAPPER = new ObjectMapper().registerModule(new JavaTimeModule());
 
 	/**
-	 * Imports scan locations and file records from a JSON file created with the export action.
-	 * Existing locations (matched by display name) must have the same rootPath and volume info;
-	 * otherwise nothing is imported and an error is thrown.
+	 * Imports scan locations, folders and file records from a JSON file created with the export action.
+	 * The file is read as a stream, so only the current path of the folder hierarchy is held in memory.
+	 * Per location, the scalar fields are read first (the exporter writes them before "rootFolder") and
+	 * validated against an existing location with the same display name before anything is written
+	 * for that location. IDs in the JSON are ignored.
 	 */
 	private void importFile(String importFile) {
 		Path source = AppUtils.normAbsPath(importFile);
-		com.fasterxml.jackson.databind.JsonNode root;
-		try {
-			root = EXPORT_MAPPER.readTree(source.toFile());
+		fileCount = 0;
+		locationCount = 0;
+		try (JsonParser p = MAPPER.getFactory().createParser(source.toFile())) {
+			if (p.nextToken() != JsonToken.START_OBJECT) {
+				throw new IllegalStateException("Invalid import file " + source + ": JSON object expected");
+			}
+			boolean found = false;
+			while (p.nextToken() == JsonToken.FIELD_NAME) {
+				String field = p.currentName();
+				p.nextToken();
+				if ("scanLocations".equals(field) && p.currentToken() == JsonToken.START_ARRAY) {
+					found = true;
+					while (p.nextToken() == JsonToken.START_OBJECT) {
+						importLocation(p);
+					}
+				} else {
+					p.skipChildren();
+				}
+			}
+			if (!found) {
+				throw new IllegalStateException("Invalid import file " + source + ": missing 'scanLocations' array");
+			}
 		} catch (IOException e) {
 			throw new IllegalStateException("Failed to read import file " + source, e);
 		}
-		com.fasterxml.jackson.databind.JsonNode locationNodes = root == null ? null : root.get("scanLocations");
-		if (locationNodes == null || !locationNodes.isArray()) {
-			throw new IllegalStateException("Invalid import file " + source + ": missing 'scanLocations' array");
-		}
-
-		// Pass 1: parse and validate everything before changing the database.
-		List<ScanLocation> importedLocations = new java.util.ArrayList<>();
-		for (com.fasterxml.jackson.databind.JsonNode node : locationNodes) {
-			ScanLocation imported = toScanLocation(node);
-			scanLocationRepository.findAll().stream()
-					.filter(loc -> loc.getDisplayName().equals(imported.getDisplayName()))
-					.findFirst()
-					.ifPresent(existing -> verifySameLocation(existing, imported));
-			importedLocations.add(imported);
-		}
-
-		// Pass 2: persist locations and their file records.
-		int fileCount = 0;
-		for (int i = 0; i < importedLocations.size(); i++) {
-			ScanLocation imported = importedLocations.get(i);
-			ScanLocation target = scanLocationRepository.findAll().stream()
-					.filter(loc -> loc.getDisplayName().equals(imported.getDisplayName()))
-					.findFirst()
-					.orElseGet(() -> scanLocationRepository.save(imported));
-			for (com.fasterxml.jackson.databind.JsonNode recordNode : locationNodes.get(i).path("fileRecords")) {
-				FileRecord record = new FileRecord();
-//				record.setScanLocationId(target.getId());
-//				record.setRelativePath(requireText(recordNode, "relativePath"));
-				record.setSizeBytes(recordNode.path("sizeBytes").asLong());
-//				record.setContentHash(recordNode.hasNonNull("contentHash") ? recordNode.get("contentHash").asText() : null);
-				record.setLastModifiedAt(java.time.Instant.parse(requireText(recordNode, "lastModifiedAt")));
-				fileRecordRepository.upsert(record);
-				fileCount++;
-			}
-		}
-		System.out.println("Imported " + importedLocations.size() + " scan locations and " + fileCount
+		System.out.println("Imported " + locationCount + " scan locations and " + fileCount
 				+ " file records from " + source);
 	}
 
-	private static ScanLocation toScanLocation(com.fasterxml.jackson.databind.JsonNode node) {
+	private void importLocation(JsonParser p) throws IOException {
+		Map<String, String> values = new HashMap<>();
+		ScanLocation target = null;
+		while (p.nextToken() == JsonToken.FIELD_NAME) {
+			String field = p.currentName();
+			JsonToken token = p.nextToken();
+			if ("rootFolder".equals(field)) {
+				if (target == null) {
+					target = resolveLocation(values);
+				}
+				if (token == JsonToken.START_OBJECT) {
+					importRootFolder(p, target);
+				}
+			} else if (token.isScalarValue()) {
+				values.put(field, p.getValueAsString());
+			} else {
+				p.skipChildren();
+			}
+		}
+		if (target == null) {
+			resolveLocation(values);
+		}
+	}
+
+	private ScanLocation resolveLocation(Map<String, String> values) {
+		ScanLocation imported = toScanLocation(values);
+		ScanLocation existing = scanLocationRepository.findByDisplayName(imported.getDisplayName());
+		locationCount++;
+		if (existing != null) {
+			verifySameLocation(existing, imported);
+			return existing;
+		}
+		return scanLocationRepository.save(imported);
+	}
+
+	private void importRootFolder(JsonParser p, ScanLocation target) throws IOException {
+		FolderRecord preset = null;
+		if (target.getRootFolderId() != null && target.getRootFolderId() > 0) {
+			preset = folderRecordRepository.findById(target.getRootFolderId());
+		}
+		importFolder(p, null, preset, root -> {
+			if (target.getRootFolderId() == null || target.getRootFolderId() != root.getId()) {
+				target.setRootFolderId(root.getId());
+				scanLocationRepository.save(target);
+			}
+		});
+	}
+
+	/**
+	 * Streams one folder object (parser is positioned on its START_OBJECT). The folder is created or
+	 * looked up as soon as its "name" is read; the exporter writes it before the child lists.
+	 */
+	private void importFolder(JsonParser p, Long parentId, FolderRecord preset, Consumer<FolderRecord> onResolved)
+			throws IOException {
+		FolderRecord folder = preset;
+		if (folder != null) {
+			onResolved.accept(folder);
+		}
+		while (p.nextToken() == JsonToken.FIELD_NAME) {
+			String field = p.currentName();
+			JsonToken token = p.nextToken();
+			switch (field) {
+			case "name" -> {
+				if (folder == null) {
+					folder = findOrCreateFolder(parentId, p.getValueAsString());
+					onResolved.accept(folder);
+				}
+			}
+			case "childFiles" -> {
+				requireFolder(folder, field);
+				if (token == JsonToken.START_ARRAY) {
+					while (p.nextToken() == JsonToken.START_OBJECT) {
+						importFileRecord(p, folder);
+					}
+				} else {
+					p.skipChildren();
+				}
+			}
+			case "childFolders" -> {
+				requireFolder(folder, field);
+				if (token == JsonToken.START_ARRAY) {
+					while (p.nextToken() == JsonToken.START_OBJECT) {
+						importFolder(p, folder.getId(), null, f -> {
+						});
+					}
+				} else {
+					p.skipChildren();
+				}
+			}
+			default -> p.skipChildren();
+			}
+		}
+	}
+
+	private static void requireFolder(FolderRecord folder, String field) {
+		if (folder == null) {
+			throw new IllegalStateException("Invalid import file: '" + field + "' found before folder 'name'");
+		}
+	}
+
+	private void importFileRecord(JsonParser p, FolderRecord folder) throws IOException {
+		Map<String, String> values = new HashMap<>();
+		while (p.nextToken() == JsonToken.FIELD_NAME) {
+			String field = p.currentName();
+			if (p.nextToken().isScalarValue()) {
+				values.put(field, p.getValueAsString());
+			} else {
+				p.skipChildren();
+			}
+		}
+		FileRecord record = new FileRecord();
+		record.setParentFolderId(folder.getId());
+		record.setName(requireText(values, "name"));
+		record.setSizeBytes(Long.parseLong(values.getOrDefault("sizeBytes", "0")));
+		record.setSha1hash(values.get("SHA1"));
+		record.setLastModifiedAt(Instant.parse(requireText(values, "lastModifiedAt")));
+		fileRecordRepository.upsert(record);
+		fileCount++;
+	}
+
+	private FolderRecord findOrCreateFolder(Long parentId, String name) {
+		FolderRecord folder = folderRecordRepository.findByParentFolderAndName(parentId, name);
+		if (folder == null) {
+			folder = folderRecordRepository.upsert(new FolderRecord(-1, parentId, name));
+		}
+		return folder;
+	}
+
+	private static ScanLocation toScanLocation(Map<String, String> values) {
 		ScanLocation location = new ScanLocation();
-		location.setDisplayName(requireText(node, "displayName"));
-//		location.setRootPathX(requireText(node, "rootPath"));
-		location.setVolName(requireText(node, "volName"));
-		location.setVolType(requireText(node, "volType"));
-		location.setVolSize(node.path("volSize").asLong(-1));
-		location.setVolVSN(requireText(node, "volVSN"));
-		location.setType(LocationType.valueOf(requireText(node, "type")));
+		location.setDisplayName(requireText(values, "displayName"));
+		location.setRootPath(requireText(values, "rootPath"));
+		location.setVolName(requireText(values, "volName"));
+		location.setVolType(requireText(values, "volType"));
+		location.setVolSize(Long.parseLong(values.getOrDefault("volSize", "-1")));
+		location.setVolVSN(requireText(values, "volVSN"));
+		location.setType(LocationType.valueOf(requireText(values, "type")));
 		return location;
 	}
 
-	private static String requireText(com.fasterxml.jackson.databind.JsonNode node, String field) {
-		com.fasterxml.jackson.databind.JsonNode value = node.get(field);
-		if (value == null || value.isNull() || value.asText().isBlank()) {
-			throw new IllegalStateException("Invalid import file: missing field '" + field + "' in " + node);
+	private static String requireText(Map<String, String> values, String field) {
+		String value = values.get(field);
+		if (value == null || value.isBlank()) {
+			throw new IllegalStateException("Invalid import file: missing field '" + field + "' in " + values);
 		}
-		return value.asText();
-	}
-	
-	/** Jackson mixin: scanLocationId is redundant in the export, as file records are nested under their scan location. */
-	@com.fasterxml.jackson.annotation.JsonIgnoreProperties("scanLocationId")
-	private abstract static class FileRecordExportMixIn {}
-	private abstract static class FolderRecordExportMixIn {}
-
-	private static final ObjectMapper EXPORT_MAPPER = new ObjectMapper()
-			.registerModule(new JavaTimeModule())
-			.addMixIn(FileRecord.class, FileRecordExportMixIn.class)
-			.addMixIn(FolderRecord.class, FolderRecordExportMixIn.class)
-			.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-			.enable(SerializationFeature.INDENT_OUTPUT);
-
-	private void export(String exportFile) {
-		List<ScanLocation> scanLocations = scanLocationRepository.findAll();
-		System.out.println("Exporting " + scanLocations.size() + " scan locations to " + exportFile);
-
-		Path targetPath = AppUtils.normAbsPath(exportFile);
-		try {
-			Path parentDir = targetPath.getParent();
-			if (parentDir != null) {
-				Files.createDirectories(parentDir);
-			}
-
-			List<Map<String, Object>> exportedLocations = scanLocations.stream()
-					.map(this::toExportMap)
-					.toList();
-			Map<String, Object> root = new LinkedHashMap<>();
-			root.put("scanLocations", exportedLocations);
-
-			EXPORT_MAPPER.writeValue(targetPath.toFile(), root);
-			System.out.println("Export complete: " + targetPath);
-		} catch (IOException e) {
-			throw new IllegalStateException("Failed to export scan data to " + exportFile, e);
-		}
-	}
-
-	private Map<String, Object> toExportMap(ScanLocation location) {
-
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("id", location.getId());
-		map.put("displayName", location.getDisplayName());
-		map.put("rootPath", location.getRootPath());
-		map.put("volName", location.getVolName());
-		map.put("volType", location.getVolType());
-		map.put("volSize", location.getVolSize());
-		map.put("volVSN", location.getVolVSN());
-		map.put("type", location.getType());
-		if (location.hasRootFolderId()) {
-			FolderRecord rootFolderRecord = folderRecordRepository.findById(location.getRootFolderId());
-			map.put("rootFolder", rootFolderRecord);
-		}
-		return map;
-	}
-
-	private Map<String, Object> toExportMap(FolderRecord folder) {
-		List<FileRecord> childFiles = fileRecordRepository.findByParentFolder(folder.getId());
-		List<FolderRecord> childFolders = folderRecordRepository.findByParentFolder(folder.getId());
-
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("id", folder.getId());
-		map.put("name", folder.getName());
-		map.put("childFiles", childFiles);
-		map.put("childFolders", childFolders);
-		return map;
-	}
-
-	private Map<String, Object> toExportMap(FileRecord file) {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("id", file.getId());
-		map.put("name", file.getName());
-		map.put("sizeBytes", file.getSizeBytes());
-		map.put("lastModifiedAt", file.getLastModifiedAt());
-		map.put("SHA1", file.getSha1hash());
-		return map;
+		return value;
 	}
 
 	private static void verifySameLocation(ScanLocation existing, ScanLocation requested) {
@@ -220,8 +251,8 @@ public class JSONImporter {
 	}
 
 	public static void main(String[] args) {
-		JSONImporter exporter = new JSONImporter();
-		exporter.export("output/db-export.json");
+		JSONImporter importer = new JSONImporter();
+		importer.importFile("output/db-export.json");
 	}
-	
+
 }

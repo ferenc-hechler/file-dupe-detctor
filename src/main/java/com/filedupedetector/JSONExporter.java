@@ -3,10 +3,10 @@ package com.filedupedetector;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
+import com.fasterxml.jackson.core.JsonEncoding;
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -37,17 +37,8 @@ public class JSONExporter {
 	}
 	
 
-	/** Jackson mixin: scanLocationId is redundant in the export, as file records are nested under their scan location. */
-	@com.fasterxml.jackson.annotation.JsonIgnoreProperties("scanLocationId")
-	private abstract static class FileRecordExportMixIn {}
-
-	@com.fasterxml.jackson.annotation.JsonIgnoreProperties("parentFolderId")
-	private abstract static class FolderRecordExportMixIn {}
-
 	private static final ObjectMapper EXPORT_MAPPER = new ObjectMapper()
 			.registerModule(new JavaTimeModule())
-			.addMixIn(FileRecord.class, FileRecordExportMixIn.class)
-			.addMixIn(FolderRecord.class, FolderRecordExportMixIn.class)
 			.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 			.enable(SerializationFeature.INDENT_OUTPUT);
 
@@ -62,57 +53,75 @@ public class JSONExporter {
 				Files.createDirectories(parentDir);
 			}
 
-			List<Map<String, Object>> exportedLocations = scanLocations.stream()
-					.map(this::toExportMap)
-					.toList();
-			Map<String, Object> root = new LinkedHashMap<>();
-			root.put("scanLocations", exportedLocations);
-
-			EXPORT_MAPPER.writeValue(targetPath.toFile(), root);
+			try (JsonGenerator gen = EXPORT_MAPPER.createGenerator(targetPath.toFile(), JsonEncoding.UTF8)) {
+				gen.writeStartObject();
+				gen.writeArrayFieldStart("scanLocations");
+				for (ScanLocation location : scanLocations) {
+					writeLocation(gen, location);
+				}
+				gen.writeEndArray();
+				gen.writeEndObject();
+			}
 			System.out.println("Export complete: " + targetPath);
 		} catch (IOException e) {
 			throw new IllegalStateException("Failed to export scan data to " + exportFile, e);
 		}
 	}
 
-	private Map<String, Object> toExportMap(ScanLocation location) {
+	private void writeField(JsonGenerator gen, String name, Object value) throws IOException {
+		gen.writeFieldName(name);
+		EXPORT_MAPPER.writeValue(gen, value);
+	}
 
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("id", location.getId());
-		map.put("displayName", location.getDisplayName());
-		map.put("rootPath", location.getRootPath());
-		map.put("volName", location.getVolName());
-		map.put("volType", location.getVolType());
-		map.put("volSize", location.getVolSize());
-		map.put("volVSN", location.getVolVSN());
-		map.put("type", location.getType());
+	private void writeLocation(JsonGenerator gen, ScanLocation location) throws IOException {
+		gen.writeStartObject();
+		writeField(gen, "id", location.getId());
+		writeField(gen, "displayName", location.getDisplayName());
+		writeField(gen, "rootPath", location.getRootPath());
+		writeField(gen, "volName", location.getVolName());
+		writeField(gen, "volType", location.getVolType());
+		writeField(gen, "volSize", location.getVolSize());
+		writeField(gen, "volVSN", location.getVolVSN());
+		writeField(gen, "type", location.getType());
 		if (location.hasRootFolderId()) {
-			FolderRecord rootFolderRecord = folderRecordRepository.findById(location.getRootFolderId());
-			map.put("rootFolder", rootFolderRecord == null ? null : toExportMap(rootFolderRecord));
+			FolderRecord root = folderRecordRepository.findById(location.getRootFolderId());
+			gen.writeFieldName("rootFolder");
+			if (root == null) {
+				gen.writeNull();
+			} else {
+				writeFolder(gen, root);
+			}
 		}
-		return map;
+		gen.writeEndObject();
 	}
 
-	private Map<String, Object> toExportMap(FolderRecord folder) {
-		List<FileRecord> childFiles = fileRecordRepository.findByParentFolder(folder.getId());
-		List<FolderRecord> childFolders = folderRecordRepository.findByParentFolder(folder.getId());
+	private void writeFolder(JsonGenerator gen, FolderRecord folder) throws IOException {
+		gen.writeStartObject();
+		writeField(gen, "id", folder.getId());
+		writeField(gen, "name", folder.getName());
 
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("id", folder.getId());
-		map.put("name", folder.getName());
-		map.put("childFiles", childFiles.stream().map(this::toExportMap).toList());
-		map.put("childFolders", childFolders.stream().map(this::toExportMap).toList());
-		return map;
+		gen.writeArrayFieldStart("childFiles");
+		for (FileRecord file : fileRecordRepository.findByParentFolder(folder.getId())) {
+			writeFile(gen, file);
+		}
+		gen.writeEndArray();
+
+		gen.writeArrayFieldStart("childFolders");
+		for (FolderRecord child : folderRecordRepository.findByParentFolder(folder.getId())) {
+			writeFolder(gen, child);
+		}
+		gen.writeEndArray();
+		gen.writeEndObject();
 	}
 
-	private Map<String, Object> toExportMap(FileRecord file) {
-		Map<String, Object> map = new LinkedHashMap<>();
-		map.put("id", file.getId());
-		map.put("name", file.getName());
-		map.put("sizeBytes", file.getSizeBytes());
-		map.put("lastModifiedAt", file.getLastModifiedAt());
-		map.put("SHA1", file.getSha1hash());
-		return map;
+	private void writeFile(JsonGenerator gen, FileRecord file) throws IOException {
+		gen.writeStartObject();
+		writeField(gen, "id", file.getId());
+		writeField(gen, "name", file.getName());
+		writeField(gen, "sizeBytes", file.getSizeBytes());
+		writeField(gen, "lastModifiedAt", file.getLastModifiedAt());
+		writeField(gen, "SHA1", file.getSha1hash());
+		gen.writeEndObject();
 	}
 
 
