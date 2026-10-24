@@ -153,6 +153,10 @@ public final class ScanLocation {
 		this.type = type;
 	}
 
+	public boolean hasRootFolderId() {
+		return rootFolderId != null;
+	}
+
 	public Long getRootFolderId() {
 		return rootFolderId;
 	}
