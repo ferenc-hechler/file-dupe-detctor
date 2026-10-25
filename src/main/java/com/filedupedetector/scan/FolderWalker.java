@@ -108,7 +108,7 @@ public final class FolderWalker {
             } else if (!attrs.isRegularFile()) {
                 visitor.onInaccessible(entry, InaccessibleReason.OTHER);
             } else {
-                files.add(new FileEntry(entry, attrs.size(), attrs.lastModifiedTime()));
+                files.add(new FileEntry(entry, attrs.size(), attrs.lastModifiedTime(), -1));
             }
         } catch (IOException | RuntimeException e) {
             visitor.onError(entry, toIo(e, entry));

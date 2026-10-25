@@ -12,7 +12,7 @@ import java.util.List;
 public interface FolderVisitor {
 
     /** A single regular file inside a folder. */
-    record FileEntry(Path path, long size, FileTime lastModified) {
+    record FileEntry(Path path, long size, FileTime lastModified, long remoteId) {
     }
 
     void preVisitDirectory(Path folder, BasicFileAttributes attrs);

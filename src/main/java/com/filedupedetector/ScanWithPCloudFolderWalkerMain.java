@@ -21,6 +21,8 @@ import com.filedupedetector.scan.HashService;
 import com.filedupedetector.scan.Sha1HashService;
 import com.filedupedetector.utils.AppUtils;
 import com.pcloud.sdk.ApiClient;
+import com.pcloud.sdk.ApiError;
+import com.pcloud.sdk.Checksums;
 
 public final class ScanWithPCloudFolderWalkerMain {
 
@@ -37,6 +39,17 @@ public final class ScanWithPCloudFolderWalkerMain {
 
     private long countfiles(String folder) {
     	return 0;
+    }
+
+    private String getSha1ForFile(long fileId) {
+    	Checksums result;
+		try {
+			result = apiClient.getChecksums(fileId).execute();
+	    	String sha1 = result.getSha1().hex();
+			return sha1;
+		} catch (IOException | ApiError e) {
+			return null;
+		}
     }
 
     
@@ -115,13 +128,9 @@ public final class ScanWithPCloudFolderWalkerMain {
                     }
                 }
                 if (fileRecord == null) {
-                	String sha1hash = null;
-                	try {
-                		sha1hash = hashService.computeHash(fileEntry.path());
-                		calculatedHashCount++;
-                		calculatedHashBytes += fileEntry.size();
-                	}
-                	catch (IOException e) {}
+                	String sha1hash = getSha1ForFile(fileEntry.remoteId());
+            		calculatedHashCount++;
+            		calculatedHashBytes += fileEntry.size();
                     fileRecord = new FileRecord();
                     fileRecord.setName(fileName);
                     fileRecord.setParentFolderId(currentFolder.getId());

@@ -153,7 +153,7 @@ public final class PCloudFolderWalker {
                 subFolders.add(new FolderAction(sub.folderId(), path, new PCloudAttributes(entry, true, 0), false));
             } else if (entry.isFile()) {
                 RemoteFile file = entry.asFile();
-                files.add(new FileEntry(path, file.size(), toFileTime(file.lastModified())));
+                files.add(new FileEntry(path, file.size(), toFileTime(file.lastModified()), file.fileId()));
             } else {
                 visitor.onInaccessible(path, com.filedupedetector.scan.InaccessibleReason.OTHER);
             }
