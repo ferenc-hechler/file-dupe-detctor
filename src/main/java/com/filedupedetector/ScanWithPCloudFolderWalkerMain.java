@@ -38,8 +38,30 @@ public final class ScanWithPCloudFolderWalkerMain {
     }
 
 
+    static class CountFilesVisitor implements FolderVisitor {
+    	public long fileCount = 0;
+    	public long getFileCount() {
+			return fileCount;
+		}
+    	public void visitFolder(Path folder, List<FolderVisitor.FileEntry> files, List<Path> subFolders) {
+			fileCount += files.size();
+		}
+		@Override
+		public void preVisitDirectory(Path folder, BasicFileAttributes attrs) {
+		}
+		@Override
+		public void postVisitDirectory(Path folder, IOException exc) {
+		}
+    }
+    
     private long countfiles(String folder) {
-    	return 0;
+    	if (1==1) {
+			return 0;
+		}
+    	PCloudFolderWalker walker = new PCloudFolderWalker(apiClient);
+		CountFilesVisitor visitor = new CountFilesVisitor();
+		walker.walk(Path.of(folder), visitor);
+		return visitor.getFileCount();
     }
 
     private String getSha1ForFile(long fileId) {
@@ -272,13 +294,17 @@ public final class ScanWithPCloudFolderWalkerMain {
     public static void main(String[] args) {
         ScanWithPCloudFolderWalkerMain scanApp = new ScanWithPCloudFolderWalkerMain();
         
-        scanApp.dbMgr.showDBFiles(2);
+        scanApp.dbMgr.showDBFiles(1);
 //        scanApp.scanPCloudFolder("/Application");
 //        scanApp.scanPCloudFolder("/src/test");
 //        scanApp.scanPCloudFolder("/DEV");
-        scanApp.scanPCloudFolder("/EBOOKS");
+//        scanApp.scanPCloudFolder("/EBOOKS");
 //        scanApp.scanPCloudFolder("/BEWERBUNG");
-        scanApp.dbMgr.showDBFiles(2);
+//        scanApp.scanPCloudFolder("/My Pictures/2006");
+        scanApp.scanPCloudFolder("/My Pictures/2010");
+        scanApp.dbMgr.showDBFiles(1);
+        System.out.printf("%n### DONE ###%n");
+        
     }
 
 

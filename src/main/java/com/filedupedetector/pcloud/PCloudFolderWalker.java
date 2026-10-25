@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import com.filedupedetector.scan.FolderVisitor;
 import com.filedupedetector.scan.FolderVisitor.FileEntry;
+import com.filedupedetector.utils.PerfMonitor;
 import com.pcloud.sdk.ApiClient;
 import com.pcloud.sdk.ApiError;
 import com.pcloud.sdk.RemoteEntry;
@@ -30,7 +31,11 @@ public final class PCloudFolderWalker {
 
     private static final Logger log = LoggerFactory.getLogger(PCloudFolderWalker.class);
 
+    private static final long WARN_MILLIS_THRESHOLD = 100;
+    
     private final ApiClient apiClient;
+    private PerfMonitor perfMonitor;
+    
 
     public PCloudFolderWalker() {
         this(PCloudApiClient.getApiClient());
@@ -38,10 +43,10 @@ public final class PCloudFolderWalker {
 
     public PCloudFolderWalker(ApiClient apiClient) {
         this.apiClient = apiClient;
+    	this.perfMonitor = new PerfMonitor();
     }
 
-    private record FolderAction(long folderId, Path folder, BasicFileAttributes attrs, boolean leave) {
-    }
+    private record FolderAction(long folderId, Path folder, BasicFileAttributes attrs, boolean leave) {}
 
     /** Walks the complete pCloud tree starting at the root folder. */
     public void walk(FolderVisitor visitor) {
@@ -60,7 +65,7 @@ public final class PCloudFolderWalker {
 				continue;
 			}
 			try {
-				RemoteFolder folder = apiClient.listFolder(currentFolderId).execute();
+				RemoteFolder folder = listPCloudFolder(currentFolderId, part + " of " + normalizedPath);
 				boolean found = false;
 				if (folder.children() != null) {
 					for (RemoteEntry entry : folder.children()) {
@@ -79,6 +84,20 @@ public final class PCloudFolderWalker {
 			}
 		}
 		return currentFolderId;
+	}
+
+	private RemoteFolder listPCloudFolder(long folderId, Object folderPath) throws IOException, ApiError {
+		try {
+			perfMonitor.reset();
+			RemoteFolder folder = apiClient.listFolder(folderId).execute();
+			perfMonitor.warnIfElapsedSecondsExceeds(WARN_MILLIS_THRESHOLD, "listFolder for " + folderId + " " + folderPath);
+			return folder;
+		}
+		catch (Exception e) {
+			System.out.printf("EXCEPTION: %s (elapsed time: %.3f sec): %s%n", "listFolder for " + folderId + " " + folderPath, perfMonitor.getElapsedSeconds(), e.toString());
+			throw e;
+		}
+		
 	}
     
     public void walk(Path rootPath, FolderVisitor visitor) {
@@ -111,7 +130,7 @@ public final class PCloudFolderWalker {
             List<FolderAction> subFolders = new ArrayList<>();
 
             try {
-                RemoteFolder remote = apiClient.listFolder(action.folderId()).execute();
+                RemoteFolder remote = listPCloudFolder(action.folderId(), action.folder);
                 if (remote.children() != null) {
                     for (RemoteEntry entry : remote.children()) {
                         classify(folder, entry, files, subFolders, visitor);

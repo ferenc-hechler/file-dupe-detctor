@@ -42,7 +42,7 @@ public class DBManager {
     }
 
     private void recursiveShowDBFiles(FolderRecord folderRecord, int maxDepth, String indent) {
-        if (maxDepth < 0) {
+        if (maxDepth <= 0) {
             return;
         }
         System.out.println(folderRecord.disp(indent));
