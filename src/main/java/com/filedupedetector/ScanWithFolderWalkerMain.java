@@ -331,7 +331,8 @@ public final class ScanWithFolderWalkerMain {
         ScanWithFolderWalkerMain scanApp = new ScanWithFolderWalkerMain();
         
         scanApp.showDBFiles(2);
-        scanApp.scanFileFolder("./input/test");
+//        scanApp.scanFileFolder("./input/test");
+        scanApp.scanFileFolder("./specs");
         scanApp.showDBFiles(3);
     }
 
