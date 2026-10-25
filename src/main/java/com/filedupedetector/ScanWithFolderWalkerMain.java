@@ -16,13 +16,7 @@ import com.filedupedetector.model.FileRecord;
 import com.filedupedetector.model.FolderRecord;
 import com.filedupedetector.model.ScanLocation;
 import com.filedupedetector.model.ScanLocation.LocationType;
-import com.filedupedetector.persistence.FileRecordRepository;
-import com.filedupedetector.persistence.FolderRecordRepository;
-import com.filedupedetector.persistence.JdbcConnectionManager;
-import com.filedupedetector.persistence.JdbcFileRecordRepository;
-import com.filedupedetector.persistence.JdbcFolderRecordRepository;
-import com.filedupedetector.persistence.JdbcScanLocationRepository;
-import com.filedupedetector.persistence.ScanLocationRepository;
+import com.filedupedetector.persistence.DBManager;
 import com.filedupedetector.scan.FolderVisitor;
 import com.filedupedetector.scan.FolderWalker;
 import com.filedupedetector.scan.HashService;
@@ -31,40 +25,15 @@ import com.filedupedetector.utils.AppUtils;
 
 public final class ScanWithFolderWalkerMain {
 
-    ScanLocationRepository scanLocationRepository;
-    FileRecordRepository fileRecordRepository;
-    FolderRecordRepository folderRecordRepository;
+    DBManager dbMgr;
     HashService hashService;
     JSONExporter jsonExporter;
 
     public ScanWithFolderWalkerMain() {
-        JdbcConnectionManager connectionManager = new JdbcConnectionManager(true);
-        this.scanLocationRepository = new JdbcScanLocationRepository(connectionManager);
-        this.fileRecordRepository = new JdbcFileRecordRepository(connectionManager);
-        this.folderRecordRepository = new JdbcFolderRecordRepository(connectionManager);
+        this.dbMgr = new DBManager(true);
         this.hashService = new Sha1HashService();
     }
 
-    public void showDBFiles(int maxDepth) {
-        scanLocationRepository.findAll().forEach(location -> {
-            System.out.println("ScanLocation: " + location);
-            FolderRecord folderRecord = folderRecordRepository.findById(location.getRootFolderId());
-            recursiveShowDBFiles(folderRecord, maxDepth, "");
-        });
-    }
-
-    private void recursiveShowDBFiles(FolderRecord folderRecord, int maxDepth, String indent) {
-        if (maxDepth < 0) {
-            return;
-        }
-        System.out.println(indent + folderRecord);
-        fileRecordRepository.findByParentFolder(folderRecord.getId()).forEach(file -> {
-            System.out.println(indent+"  " + file);
-        });
-        folderRecordRepository.findByParentFolder(folderRecord.getId()).forEach(folder -> {
-            recursiveShowDBFiles(folder, maxDepth - 1, indent + "  ");
-        });
-    }
 
     private long countfiles(String folder) {
         try {
@@ -97,7 +66,7 @@ public final class ScanWithFolderWalkerMain {
 
     
     class MyFolderVisitor implements FolderVisitor {
-        private ScanLocation location;
+        ScanLocation location;
         private Stack<FolderRecord> dirStack;
         private FolderRecord currentFolder;
         private long fileCount;
@@ -113,24 +82,24 @@ public final class ScanWithFolderWalkerMain {
             this.nextProgressOutput = System.nanoTime();
             FolderRecord rootFolder = null;
             if (location.getRootFolderId() != null) {
-                rootFolder = folderRecordRepository.findById(location.getRootFolderId());
+                rootFolder = dbMgr.getFolderRecordRepository().findById(location.getRootFolderId());
                 if (rootFolder == null) {
                     throw new IllegalStateException("ScanLocation has rootFolderId=" + location.getRootFolderId()
                             + " but no such folder exists in the database");
                 }
             }
             if (location.getRootFolderId() == null) {
-                rootFolder = folderRecordRepository.findByParentFolderAndName(null, location.getRootPath());
+                rootFolder = dbMgr.getFolderRecordRepository().findByParentFolderAndName(null, location.getRootPath());
                 if (rootFolder == null) {
                     rootFolder = new FolderRecord();
                     rootFolder.setName(location.getRootPath());
                     rootFolder.setParentFolderId(null);
-                    rootFolder = folderRecordRepository.upsert(rootFolder);
+                    rootFolder = dbMgr.getFolderRecordRepository().upsert(rootFolder);
                     rootFolder.setNew(true);
                 }
                 rootFolder.setFullPath(location.getRootPath());
                 location.setRootFolderId(rootFolder.getId());
-                scanLocationRepository.save(location);
+                dbMgr.getScanLocationRepository().save(location);
             }
             currentFolder = new FolderRecord();
             currentFolder.setROOT(true);
@@ -146,10 +115,10 @@ public final class ScanWithFolderWalkerMain {
             Map<String, FileRecord> dbFiles = new HashMap<>();
             Map<String, FolderRecord> dbFolders = new HashMap<>();
             if (!currentFolder.isNew()) {
-                for (FileRecord fileRecord : fileRecordRepository.findByParentFolder(currentFolder.getId())) {
+                for (FileRecord fileRecord : dbMgr.getFileRecordRepository().findByParentFolder(currentFolder.getId())) {
                     dbFiles.put(fileRecord.getName(), fileRecord);
                 }
-                for (FolderRecord folderRecord : folderRecordRepository.findByParentFolder(currentFolder.getId())) {
+                for (FolderRecord folderRecord : dbMgr.getFolderRecordRepository().findByParentFolder(currentFolder.getId())) {
                     dbFolders.put(folderRecord.getName(), folderRecord);
                 }
             }
@@ -184,29 +153,17 @@ public final class ScanWithFolderWalkerMain {
                     fileRecord.setSizeBytes(fileEntry.size());
                     fileRecord.setLastModifiedAt(fileEntry.lastModified().toInstant());
                     fileRecord.setSha1hash(sha1hash);
-                    fileRecord = fileRecordRepository.upsert(fileRecord);
+                    fileRecord = dbMgr.getFileRecordRepository().upsert(fileRecord);
                 }
             }
 
             List<Long> fileIDsToDelete = dbFiles.values().stream().map(fileRecord -> fileRecord.getId()).toList(); 
-            fileRecordRepository.deleteByID(fileIDsToDelete);
+            dbMgr.getFileRecordRepository().deleteByID(fileIDsToDelete);
             
             subFolders.stream().map(subFolder -> subFolder.getFileName().toString()).forEach(subFolderName -> dbFolders.remove(subFolderName));
-            dbFolders.values().forEach((folderToDelete) -> recursiveDeleteFolder(folderToDelete.getId()));
+            dbFolders.values().forEach((folderToDelete) -> dbMgr.recursiveDeleteFolder(folderToDelete.getId()));
                                 
         }
-
-
-
-        private void recursiveDeleteFolder(Long folderId) {
-            List<Long> fileIDsToDelete = fileRecordRepository.findIDsByParentFolder(folderId);
-            fileRecordRepository.deleteByID(fileIDsToDelete);
-            List<Long> folderIDsToDelete = folderRecordRepository.findIDsByParentFolder(folderId);
-            folderIDsToDelete.forEach((subFolderId) -> recursiveDeleteFolder(subFolderId));
-            folderRecordRepository.deleteByID(folderId);
-        }
-
-
 
         @Override
         public void preVisitDirectory(Path folder, BasicFileAttributes attrs) {
@@ -216,7 +173,7 @@ public final class ScanWithFolderWalkerMain {
             String folderName = currentFolder.isROOT() ? AppUtils.normFilename(folder) : folder.getFileName().toString();
             currentFolder = null;
             if (oldCurrentFolder.isROOT() || !oldCurrentFolder.isNew()) {
-                FolderRecord existingFolder = folderRecordRepository.findByParentFolderAndName(oldCurrentFolder.getIdOrNull(), folderName);
+                FolderRecord existingFolder = dbMgr.getFolderRecordRepository().findByParentFolderAndName(oldCurrentFolder.getIdOrNull(), folderName);
                 if (existingFolder != null) {
                     currentFolder = existingFolder;
                 }
@@ -225,7 +182,7 @@ public final class ScanWithFolderWalkerMain {
                 currentFolder = new FolderRecord();
                 currentFolder.setName(folderName);
                 currentFolder.setParentFolderId(oldCurrentFolder.getIdOrNull());
-                currentFolder = folderRecordRepository.upsert(currentFolder);
+                currentFolder = dbMgr.getFolderRecordRepository().upsert(currentFolder);
                 currentFolder.setNew(true);
             }
             if (oldCurrentFolder.isROOT()) {
@@ -276,14 +233,14 @@ public final class ScanWithFolderWalkerMain {
         location.setType(LocationType.LOCAL);
         location.setRootPathWithVolInfo(AppUtils.normFilename(rootPath));
 
-        var existing = scanLocationRepository.findByDisplayName(name);
+        var existing = dbMgr.getScanLocationRepository().findByDisplayName(name);
         if (existing != null) {
             // The location already exists: it must still describe the same folder on the
             // same volume.
             verifySameLocation(existing, location);
             return existing;
         }
-        return scanLocationRepository.save(location);
+        return dbMgr.getScanLocationRepository().save(location);
     }
 
     record WalkResult(long folderCount, long fileCount) {
@@ -292,7 +249,7 @@ public final class ScanWithFolderWalkerMain {
 
     
     private WalkResult walkFolders(String folder, long countFiles) {
-    	folder = AppUtils.normFilename(Paths.get(folder).toAbsolutePath());;
+    	folder = AppUtils.normAbsFilename(folder);;
         FolderWalker walker = new FolderWalker();
         ScanLocation location = retrieveScanLocation(folder, folder);
         MyFolderVisitor visitor = new MyFolderVisitor(location, countFiles);
@@ -330,10 +287,10 @@ public final class ScanWithFolderWalkerMain {
     public static void main(String[] args) {
         ScanWithFolderWalkerMain scanApp = new ScanWithFolderWalkerMain();
         
-        scanApp.showDBFiles(2);
+        scanApp.dbMgr.showDBFiles(2);
 //        scanApp.scanFileFolder("./input/test");
         scanApp.scanFileFolder("./specs");
-        scanApp.showDBFiles(3);
+        scanApp.dbMgr.showDBFiles(3);
     }
 
 

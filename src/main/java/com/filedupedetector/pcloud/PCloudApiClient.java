@@ -34,6 +34,10 @@ public class PCloudApiClient {
 		}
 		return internApiClient;
 	}
+	public static synchronized ApiClient getApiClient(String configFilename) {
+		PCloudApiClient.setConfigFilename(configFilename);
+		return getApiClient();
+	}
 	public static synchronized void shutdownApiClient() {
 		if (internApiClient == null) {
 			return;
