@@ -1,9 +1,6 @@
 package com.filedupedetector.model;
 
-import static com.filedupedetector.utils.AppUtils.padl;
-import static com.filedupedetector.utils.AppUtils.padr;
-import static com.filedupedetector.utils.AppUtils.readable;
-
+import java.awt.Color;
 import java.util.Objects;
 
 /**
@@ -115,5 +112,14 @@ public final class FolderRecord {
 		return indent+name;
 	}
 
+	public Color getColor() {
+		if (name.toLowerCase().startsWith("f")) {
+			return Color.GREEN;
+		}
+		if (name.toLowerCase().startsWith("p")) {
+			return Color.RED;
+		}
+		return null;
+	}
 
 }

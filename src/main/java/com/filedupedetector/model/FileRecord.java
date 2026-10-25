@@ -1,5 +1,6 @@
 package com.filedupedetector.model;
 
+import java.awt.Color;
 import java.time.Instant;
 import java.util.Objects;
 import static com.filedupedetector.utils.AppUtils.*;
@@ -104,4 +105,16 @@ public final class FileRecord {
 	public String disp(String indent, int nameWidth) {
 		return "%s %s  %s  %s".formatted(padr(indent+name,nameWidth), padl(readable(sizeBytes),10), readable(lastModifiedAt), readable(sha1hash));
 	}
+	
+
+	public Color getColor() {
+		if (name.toLowerCase().startsWith("f")) {
+			return Color.GREEN;
+		}
+		if (name.toLowerCase().startsWith("p")) {
+			return Color.RED;
+		}
+		return null;
+	}
+	
 }

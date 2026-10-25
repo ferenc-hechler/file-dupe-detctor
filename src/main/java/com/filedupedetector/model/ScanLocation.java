@@ -1,5 +1,6 @@
 package com.filedupedetector.model;
 
+import java.awt.Color;
 import java.nio.file.Path;
 import java.util.Objects;
 
@@ -189,4 +190,16 @@ public final class ScanLocation {
 		return "%s[%s %s]: %s(%s %.1f GB) %s"
 				.formatted(displayName, type, rootPath, volName, volType, volSize/1024.0/1024.0/1024.0, volVSN);
 	}
+	
+
+	public Color getColor() {
+		if (displayName.replace("/", "").toLowerCase().startsWith("f")) {
+			return Color.GREEN;
+		}
+		if (displayName.replace("/", "").toLowerCase().startsWith("p")) {
+			return Color.RED;
+		}
+		return null;
+	}
+	
 }

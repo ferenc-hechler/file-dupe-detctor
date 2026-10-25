@@ -1,6 +1,8 @@
 package com.filedupedetector.ui;
 
 import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
 
 import javax.swing.JFrame;
 import javax.swing.JScrollPane;
@@ -9,6 +11,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.event.TreeWillExpandListener;
 import javax.swing.event.TreeExpansionEvent;
 import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 
@@ -41,6 +44,22 @@ public class DBTreeViewer extends JFrame {
 		this.tree = new JTree(treeModel);
 		tree.setRootVisible(false);
 		tree.setShowsRootHandles(true);
+		tree.setCellRenderer(new DefaultTreeCellRenderer() {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public Component getTreeCellRendererComponent(JTree t, Object value, boolean sel, boolean expanded,
+					boolean leaf, int row, boolean hasFocus) {
+				super.getTreeCellRendererComponent(t, value, sel, expanded, leaf, row, hasFocus);
+				if (!sel && value instanceof DefaultMutableTreeNode n && n.getUserObject() instanceof NodeData d) {
+					Color c = d.color();
+					if (c != null) {
+						setForeground(c);
+					}
+				}
+				return this;
+			}
+		});
 
 		dbManager.getScanLocationRepository().findAll().forEach(loc -> root.add(createLazyNode(loc, loc.disp(), loc.hasRootFolderId())));
 		// children were added after the tree was created -> notify the model
@@ -103,6 +122,18 @@ public class DBTreeViewer extends JFrame {
 		@Override
 		public String toString() {
 			return label;
+		}
+
+		/** Color of the model object, or null for the default color. */
+		Color color() {
+			if (object instanceof ScanLocation l) {
+				return l.getColor();
+			} else if (object instanceof FolderRecord f) {
+				return f.getColor();
+			} else if (object instanceof FileRecord f) {
+				return f.getColor();
+			}
+			return null;
 		}
 	}
 
