@@ -1,11 +1,15 @@
 package com.filedupedetector.persistence;
 
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 
 import com.filedupedetector.model.FolderRecord;
 
 public class DBManager {
 	
+    JdbcConnectionManager connectionManager;
     ScanLocationRepository scanLocationRepository;
     FileRecordRepository fileRecordRepository;
     FolderRecordRepository folderRecordRepository;
@@ -14,7 +18,7 @@ public class DBManager {
         this(false);
     }
     public DBManager(boolean zapDatabase) {
-	    JdbcConnectionManager connectionManager = new JdbcConnectionManager(zapDatabase);
+	    this.connectionManager = new JdbcConnectionManager(zapDatabase);
 	    this.scanLocationRepository = new JdbcScanLocationRepository(connectionManager);
 	    this.fileRecordRepository = new JdbcFileRecordRepository(connectionManager);
 	    this.folderRecordRepository = new JdbcFolderRecordRepository(connectionManager);
@@ -61,5 +65,13 @@ public class DBManager {
         folderIDsToDelete.forEach((subFolderId) -> recursiveDeleteFolder(subFolderId));
         getFolderRecordRepository().deleteByID(folderId);
     }
+	public void shutdownCompact() {
+		try (Connection conn = connectionManager.openConnection();
+			Statement stmt = conn.createStatement()) {
+		    stmt.execute("SHUTDOWN COMPACT");	
+		} catch (SQLException e) {
+			throw new IllegalStateException("Failed to compact database", e);
+		}
+	}
 
 }

@@ -48,7 +48,7 @@
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
-      <version>5.10.3</version>
+      <version>5.14.4</version>
       <scope>test</scope>
       <exclusions>
         <exclusion>
@@ -68,7 +68,7 @@
     <dependency>
       <groupId>org.assertj</groupId>
       <artifactId>assertj-core</artifactId>
-      <version>3.26.3</version>
+      <version>3.27.7</version>
       <scope>test</scope>
       <exclusions>
         <exclusion>
@@ -79,17 +79,18 @@
     </dependency>
   </dependencies>
   <properties>
-    <maven.compiler.release>17</maven.compiler.release>
-    <main.class>com.filedupedetector.FileScanCliMain</main.class>
-    <h2.version>2.2.224</h2.version>
-    <jackson.version>2.17.2</jackson.version>
+    <maven.compiler.release>21</maven.compiler.release>
+    <jackson.version>2.22.3</jackson.version>
     <argparse4j.version>0.9.0</argparse4j.version>
     <maven.shade.plugin.version>3.6.0</maven.shade.plugin.version>
-    <slf4j.version>2.0.16</slf4j.version>
+    <slf4j.version>2.0.20</slf4j.version>
     <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <assertj.version>3.26.3</assertj.version>
-    <junit.version>5.10.3</junit.version>
+    <assertj.version>3.27.7</assertj.version>
+    <junit.version>5.14.4</junit.version>
+    <main.class>com.filedupedetector.ScanWithPCloudFolderWalkerMain</main.class>
+    <pcloud.version>1.11.0</pcloud.version>
+    <h2.version>2.5.252</h2.version>
     <maven.surefire.plugin.version>3.3.1</maven.surefire.plugin.version>
   </properties>
 </project>

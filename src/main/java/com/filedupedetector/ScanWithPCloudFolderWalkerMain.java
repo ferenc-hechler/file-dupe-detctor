@@ -295,13 +295,17 @@ public final class ScanWithPCloudFolderWalkerMain {
         ScanWithPCloudFolderWalkerMain scanApp = new ScanWithPCloudFolderWalkerMain();
         
         scanApp.dbMgr.showDBFiles(1);
-//        scanApp.scanPCloudFolder("/Application");
-//        scanApp.scanPCloudFolder("/src/test");
-//        scanApp.scanPCloudFolder("/DEV");
-//        scanApp.scanPCloudFolder("/EBOOKS");
-//        scanApp.scanPCloudFolder("/BEWERBUNG");
-//        scanApp.scanPCloudFolder("/My Pictures/2006");
-        scanApp.scanPCloudFolder("/My Pictures/2010");
+        
+//        String folder = "/DEV";
+//        String folder = "/EBOOKS";
+//        String folder = "/BEWERBUNG";
+//        String folder = "/My Pictures/2006";
+        String folder = "/My Pictures/2018";
+        
+        if (args.length > 0) {
+			folder = args[0];
+		}
+        scanApp.scanPCloudFolder(folder);
         scanApp.dbMgr.showDBFiles(1);
         System.out.printf("%n### DONE ###%n");
         
