@@ -29,7 +29,7 @@ public final class ScanWithFolderWalkerMain {
     JSONExporter jsonExporter;
 
     public ScanWithFolderWalkerMain() {
-        this.dbMgr = new DBManager(true);
+        this.dbMgr = new DBManager(false);
         this.hashService = new Sha1HashService();
     }
 
@@ -287,8 +287,8 @@ public final class ScanWithFolderWalkerMain {
         ScanWithFolderWalkerMain scanApp = new ScanWithFolderWalkerMain();
         
         scanApp.dbMgr.showDBFiles(2);
-//        scanApp.scanFileFolder("./input/test");
-        scanApp.scanFileFolder("./specs");
+        scanApp.scanFileFolder("./input/test3");
+//        scanApp.scanFileFolder("./specs");
         scanApp.dbMgr.showDBFiles(3);
     }
 

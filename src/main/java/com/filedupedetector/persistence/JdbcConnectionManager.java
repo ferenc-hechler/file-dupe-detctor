@@ -56,7 +56,7 @@ public final class JdbcConnectionManager implements AutoCloseable {
 
     public static Path defaultDatabasePath() {
         String userHome = System.getProperty("user.home");
-        return Path.of(userHome, ".file-dupe-detector-pcloudscan", "store");
+        return Path.of(userHome, ".file-dupe-detector-dev", "store");
     }
 
     public Connection openConnection() throws SQLException {
