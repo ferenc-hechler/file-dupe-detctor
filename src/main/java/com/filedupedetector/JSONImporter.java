@@ -12,35 +12,23 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-
 import com.filedupedetector.model.FileRecord;
 import com.filedupedetector.model.FolderRecord;
 import com.filedupedetector.model.ScanLocation;
 import com.filedupedetector.model.ScanLocation.LocationType;
-import com.filedupedetector.persistence.FileRecordRepository;
-import com.filedupedetector.persistence.FolderRecordRepository;
-import com.filedupedetector.persistence.JdbcConnectionManager;
-import com.filedupedetector.persistence.JdbcFileRecordRepository;
-import com.filedupedetector.persistence.JdbcFolderRecordRepository;
-import com.filedupedetector.persistence.JdbcScanLocationRepository;
-import com.filedupedetector.persistence.ScanLocationRepository;
+import com.filedupedetector.persistence.DBManager;
 import com.filedupedetector.utils.AppUtils;
 
 
 public class JSONImporter {
 
-	ScanLocationRepository scanLocationRepository;
-	FileRecordRepository fileRecordRepository;
-	FolderRecordRepository folderRecordRepository;
+	DBManager dbMgr;
 
 	private int fileCount;
 	private int locationCount;
 
 	public JSONImporter() {
-		JdbcConnectionManager connectionManager = new JdbcConnectionManager(false);
-		this.scanLocationRepository = new JdbcScanLocationRepository(connectionManager);
-		this.fileRecordRepository = new JdbcFileRecordRepository(connectionManager);
-		this.folderRecordRepository = new JdbcFolderRecordRepository(connectionManager);
+		this.dbMgr = new DBManager(false);
 	}
 
 	private static final ObjectMapper MAPPER = new ObjectMapper().registerModule(new JavaTimeModule());
@@ -109,24 +97,24 @@ public class JSONImporter {
 
 	private ScanLocation resolveLocation(Map<String, String> values) {
 		ScanLocation imported = toScanLocation(values);
-		ScanLocation existing = scanLocationRepository.findByDisplayName(imported.getDisplayName());
+		ScanLocation existing = dbMgr.getScanLocationRepository().findByDisplayName(imported.getDisplayName());
 		locationCount++;
 		if (existing != null) {
 			verifySameLocation(existing, imported);
 			return existing;
 		}
-		return scanLocationRepository.save(imported);
+		return dbMgr.getScanLocationRepository().save(imported);
 	}
 
 	private void importRootFolder(JsonParser p, ScanLocation target) throws IOException {
 		FolderRecord preset = null;
 		if (target.getRootFolderId() != null && target.getRootFolderId() > 0) {
-			preset = folderRecordRepository.findById(target.getRootFolderId());
+			preset = dbMgr.getFolderRecordRepository().findById(target.getRootFolderId());
 		}
 		importFolder(p, null, preset, root -> {
 			if (target.getRootFolderId() == null || target.getRootFolderId() != root.getId()) {
 				target.setRootFolderId(root.getId());
-				scanLocationRepository.save(target);
+				dbMgr.getScanLocationRepository().save(target);
 			}
 		});
 	}
@@ -199,14 +187,14 @@ public class JSONImporter {
 		record.setSizeBytes(Long.parseLong(values.getOrDefault("sizeBytes", "0")));
 		record.setSha1hash(values.get("SHA1"));
 		record.setLastModifiedAt(Instant.parse(requireText(values, "lastModifiedAt")));
-		fileRecordRepository.upsert(record);
+		dbMgr.getFileRecordRepository().upsert(record);
 		fileCount++;
 	}
 
 	private FolderRecord findOrCreateFolder(Long parentId, String name) {
-		FolderRecord folder = folderRecordRepository.findByParentFolderAndName(parentId, name);
+		FolderRecord folder = dbMgr.getFolderRecordRepository().findByParentFolderAndName(parentId, name);
 		if (folder == null) {
-			folder = folderRecordRepository.upsert(new FolderRecord(-1, parentId, name));
+			folder = dbMgr.getFolderRecordRepository().upsert(new FolderRecord(-1, parentId, name));
 		}
 		return folder;
 	}
@@ -252,7 +240,10 @@ public class JSONImporter {
 
 	public static void main(String[] args) {
 		JSONImporter importer = new JSONImporter();
-		importer.importFile("output/db-export.json");
+//		importer.importFile("output/db-export.json");
+		importer.importFile("output/db-export_PCLOUD_EBOOKS.json");
+//		importer.importFile("output/db-export_PCLOUD_BEWERBUNG.json");
+//		importer.importFile("output/db-export_PCLOUD_EBOOK-BEWERBUNG.json");
 	}
 
 }

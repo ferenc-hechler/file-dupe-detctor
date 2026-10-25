@@ -31,7 +31,7 @@ public final class ScanWithPCloudFolderWalkerMain {
     ApiClient apiClient;
 
     public ScanWithPCloudFolderWalkerMain() {
-        this.dbMgr = new DBManager(true);
+        this.dbMgr = new DBManager(false);
         this.hashService = new Sha1HashService();
         // this.apiClient = PCloudApiClient.getApiClient("~/.env-pcloud-ro-dev");
         this.apiClient = PCloudApiClient.getApiClient("~/.env-pcloud-ro");
@@ -272,11 +272,13 @@ public final class ScanWithPCloudFolderWalkerMain {
     public static void main(String[] args) {
         ScanWithPCloudFolderWalkerMain scanApp = new ScanWithPCloudFolderWalkerMain();
         
-        scanApp.dbMgr.showDBFiles(3);
+        scanApp.dbMgr.showDBFiles(2);
 //        scanApp.scanPCloudFolder("/Application");
 //        scanApp.scanPCloudFolder("/src/test");
-        scanApp.scanPCloudFolder("/DEV");
-        scanApp.dbMgr.showDBFiles(10);
+//        scanApp.scanPCloudFolder("/DEV");
+        scanApp.scanPCloudFolder("/EBOOKS");
+//        scanApp.scanPCloudFolder("/BEWERBUNG");
+        scanApp.dbMgr.showDBFiles(2);
     }
 
 

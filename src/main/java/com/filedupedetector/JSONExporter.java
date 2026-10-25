@@ -13,27 +13,16 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.filedupedetector.model.FileRecord;
 import com.filedupedetector.model.FolderRecord;
 import com.filedupedetector.model.ScanLocation;
-import com.filedupedetector.persistence.FileRecordRepository;
-import com.filedupedetector.persistence.FolderRecordRepository;
-import com.filedupedetector.persistence.JdbcConnectionManager;
-import com.filedupedetector.persistence.JdbcFileRecordRepository;
-import com.filedupedetector.persistence.JdbcFolderRecordRepository;
-import com.filedupedetector.persistence.JdbcScanLocationRepository;
-import com.filedupedetector.persistence.ScanLocationRepository;
+import com.filedupedetector.persistence.DBManager;
 import com.filedupedetector.utils.AppUtils;
 
 
 public class JSONExporter {
 
-	ScanLocationRepository scanLocationRepository;
-	FileRecordRepository fileRecordRepository;
-	FolderRecordRepository folderRecordRepository;
+	DBManager dbMgr;
             
 	public JSONExporter() {
-        JdbcConnectionManager connectionManager = new JdbcConnectionManager();
-        this.scanLocationRepository = new JdbcScanLocationRepository(connectionManager);
-        this.fileRecordRepository = new JdbcFileRecordRepository(connectionManager);
-        this.folderRecordRepository = new JdbcFolderRecordRepository(connectionManager);
+		this.dbMgr = new DBManager(false);
 	}
 	
 
@@ -43,7 +32,7 @@ public class JSONExporter {
 			.enable(SerializationFeature.INDENT_OUTPUT);
 
 	private void export(String exportFile) {
-		List<ScanLocation> scanLocations = scanLocationRepository.findAll();
+		List<ScanLocation> scanLocations = dbMgr.getScanLocationRepository().findAll();
 		System.out.println("Exporting " + scanLocations.size() + " scan locations to " + exportFile);
 
 		Path targetPath = AppUtils.normAbsPath(exportFile);
@@ -84,7 +73,7 @@ public class JSONExporter {
 		writeField(gen, "volVSN", location.getVolVSN());
 		writeField(gen, "type", location.getType());
 		if (location.hasRootFolderId()) {
-			FolderRecord root = folderRecordRepository.findById(location.getRootFolderId());
+			FolderRecord root = dbMgr.getFolderRecordRepository().findById(location.getRootFolderId());
 			gen.writeFieldName("rootFolder");
 			if (root == null) {
 				gen.writeNull();
@@ -101,13 +90,13 @@ public class JSONExporter {
 		writeField(gen, "name", folder.getName());
 
 		gen.writeArrayFieldStart("childFiles");
-		for (FileRecord file : fileRecordRepository.findByParentFolder(folder.getId())) {
+		for (FileRecord file : dbMgr.getFileRecordRepository().findByParentFolder(folder.getId())) {
 			writeFile(gen, file);
 		}
 		gen.writeEndArray();
 
 		gen.writeArrayFieldStart("childFolders");
-		for (FolderRecord child : folderRecordRepository.findByParentFolder(folder.getId())) {
+		for (FolderRecord child : dbMgr.getFolderRecordRepository().findByParentFolder(folder.getId())) {
 			writeFolder(gen, child);
 		}
 		gen.writeEndArray();
