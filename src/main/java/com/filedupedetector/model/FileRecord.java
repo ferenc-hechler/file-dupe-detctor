@@ -2,96 +2,106 @@ package com.filedupedetector.model;
 
 import java.time.Instant;
 import java.util.Objects;
+import static com.filedupedetector.utils.AppUtils.*;
 
 /**
  * Persisted information about a single scanned file (FR-005).
  */
 public final class FileRecord {
 
-    private long id;
-    private String name;
-    private long parentFolderId;
-    private long sizeBytes;
-    private String sha1hash;
-    private Instant lastModifiedAt;
- 
-    public FileRecord() {
-    }
+	private long id;
+	private String name;
+	private long parentFolderId;
+	private long sizeBytes;
+	private String sha1hash;
+	private Instant lastModifiedAt;
 
-    public FileRecord(long id, long parentFolderId, String name, long sizeBytes,
-                       String sha1hash, Instant lastModifiedAt, Instant lastSeenAt) {
-        this.id = id;
-        this.parentFolderId = parentFolderId;
-        this.name = Objects.requireNonNull(name, "name must not be null");
-        this.sizeBytes = sizeBytes;
-        this.sha1hash = sha1hash;
-        this.lastModifiedAt = lastModifiedAt;
-    }
+	public FileRecord() {
+	}
 
-    public long getId() {
-        return id;
-    }
+	public FileRecord(long id, long parentFolderId, String name, long sizeBytes, String sha1hash,
+			Instant lastModifiedAt, Instant lastSeenAt) {
+		this.id = id;
+		this.parentFolderId = parentFolderId;
+		this.name = Objects.requireNonNull(name, "name must not be null");
+		this.sizeBytes = sizeBytes;
+		this.sha1hash = sha1hash;
+		this.lastModifiedAt = lastModifiedAt;
+	}
 
-    public void setId(long id) {
-        this.id = id;
-    }
+	public long getId() {
+		return id;
+	}
 
-    public String getName() {
+	public void setId(long id) {
+		this.id = id;
+	}
+
+	public String getName() {
 		return name;
 	}
-    
-    public void setName(String name) {
-    	this.name = name;
-    }
-    
-    public long getParentFolderId() {
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public long getParentFolderId() {
 		return parentFolderId;
 	}
-    
-    public void setParentFolderId(long parentFolderId) {
-    	this.parentFolderId = parentFolderId;
-    }
-    
-    public long getSizeBytes() {
-        return sizeBytes;
-    }
 
-    public void setSizeBytes(long sizeBytes) {
-        this.sizeBytes = sizeBytes;
-    }
+	public void setParentFolderId(long parentFolderId) {
+		this.parentFolderId = parentFolderId;
+	}
 
-    public String getSha1hash() {
-        return sha1hash;
-    }
+	public long getSizeBytes() {
+		return sizeBytes;
+	}
 
-    public void setSha1hash(String sha1hash) {
-        this.sha1hash = sha1hash;
-    }
+	public void setSizeBytes(long sizeBytes) {
+		this.sizeBytes = sizeBytes;
+	}
 
-    public Instant getLastModifiedAt() {
-        return lastModifiedAt;
-    }
+	public String getSha1hash() {
+		return sha1hash;
+	}
 
-    public void setLastModifiedAt(Instant lastModifiedAt) {
-        this.lastModifiedAt = lastModifiedAt;
-    }
+	public void setSha1hash(String sha1hash) {
+		this.sha1hash = sha1hash;
+	}
+
+	public Instant getLastModifiedAt() {
+		return lastModifiedAt;
+	}
+
+	public void setLastModifiedAt(Instant lastModifiedAt) {
+		this.lastModifiedAt = lastModifiedAt;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o)
+			return true;
+		if (!(o instanceof FileRecord that))
+			return false;
+		return id == that.id;
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(id);
+	}
+
+	@Override
+	public String toString() {
+		return "FileRecord{id=%d, parentFolderId=%d, name='%s', sizeBytes=%d}".formatted(id, parentFolderId, name,
+				sizeBytes);
+	}
 
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof FileRecord that)) return false;
-        return id == that.id;
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(id);
-    }
-
-    @Override
-    public String toString() {
-        return "FileRecord{id=%d, parentFolderId=%d, name='%s', sizeBytes=%d}"
-                .formatted(id, parentFolderId, name, sizeBytes);
-    }
+	public String disp(String indent) {
+		return disp(indent, 60);
+	}
+	public String disp(String indent, int nameWidth) {
+		return "%s %s  %s  %s".formatted(padr(indent+name,nameWidth), padl(readable(sizeBytes),10), readable(lastModifiedAt), readable(sha1hash));
+	}
 }

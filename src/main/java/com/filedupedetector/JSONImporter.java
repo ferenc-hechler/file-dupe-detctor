@@ -37,7 +37,7 @@ public class JSONImporter {
 	private int locationCount;
 
 	public JSONImporter() {
-		JdbcConnectionManager connectionManager = new JdbcConnectionManager();
+		JdbcConnectionManager connectionManager = new JdbcConnectionManager(false);
 		this.scanLocationRepository = new JdbcScanLocationRepository(connectionManager);
 		this.fileRecordRepository = new JdbcFileRecordRepository(connectionManager);
 		this.folderRecordRepository = new JdbcFolderRecordRepository(connectionManager);

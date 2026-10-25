@@ -1,5 +1,9 @@
 package com.filedupedetector.model;
 
+import static com.filedupedetector.utils.AppUtils.padl;
+import static com.filedupedetector.utils.AppUtils.padr;
+import static com.filedupedetector.utils.AppUtils.readable;
+
 import java.util.Objects;
 
 /**
@@ -102,6 +106,13 @@ public final class FolderRecord {
 	@Override
 	public String toString() {
 		return "FolderRecord{id=%d, parentFolderId=%d, name='%s'}".formatted(getIdOrNull(), parentFolderId, name);
+	}
+
+	public String disp(String indent) {
+		return disp(indent, 60);
+	}
+	public String disp(String indent, int nameWidth) {
+		return indent+name;
 	}
 
 

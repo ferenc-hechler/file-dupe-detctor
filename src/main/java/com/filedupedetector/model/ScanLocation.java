@@ -184,4 +184,9 @@ public final class ScanLocation {
 		return "ScanLocation{id=%d, displayName='%s', rootPath='%s', volName='%s', volType='%s', volSize=%d, volVSN='%s', type=%s}"
 				.formatted(id, displayName, rootPath, volName, volType, volSize, volVSN, type);
 	}
+
+	public String disp() {
+		return "%s[%s %s]: %s(%s %.1f GB) %s"
+				.formatted(displayName, type, rootPath, volName, volType, volSize/1024.0/1024.0/1024.0, volVSN);
+	}
 }

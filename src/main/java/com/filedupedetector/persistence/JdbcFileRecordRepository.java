@@ -146,7 +146,7 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
     }
 
     private void updateExisting(Connection conn, FileRecord record) throws SQLException {
-        String sql = "UPDATE file_record SET size_bytes = ?, last_modified_at = ?, sha1_hash = ?, "
+        String sql = "UPDATE file_record SET size_bytes = ?, last_modified_at = ?, sha1_hash = ? "
                 + "WHERE id = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, record.getSizeBytes());
