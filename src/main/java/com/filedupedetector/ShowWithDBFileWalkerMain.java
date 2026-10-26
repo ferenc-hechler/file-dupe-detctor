@@ -44,24 +44,21 @@ public final class ShowWithDBFileWalkerMain {
     
     class ShowDBFileVisitor implements DBFileVisitor<CountResults> {
 
-        String indent = "";
-
         @Override
         public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {
-            System.out.println(folderRecord.disp(indent));
-            indent = indent + "  ";
         }
 
         @Override
         public CountResults visitFolder(ScanLocation location, FolderRecord folderRecord, Path path, List<CountResults> childVisits) {
             CountResults result = CountResults.count(childVisits);
             if (location == null) {
-                System.out.println(indent + "TOTAL: " + result);
+                System.out.println("TOTAL: " + result);
             }
+            else if (location.getRootFolderId() == folderRecord.getId()) {
+				System.out.println("Location: " + location.disp() + " - " + result);
+			}
             else {
-                indent = indent.substring(0, indent.length() - 2);
                 result = result.add(CountResults.count(folderRecord));
-                System.out.println(indent + "-> " + result);
             }
             return result;
         }
@@ -69,7 +66,6 @@ public final class ShowWithDBFileWalkerMain {
         @Override
         public CountResults visitFile(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord,
                 Path path) {
-            System.out.println(fileRecord.disp(indent));
             return CountResults.count(fileRecord);
         }
 
