@@ -166,24 +166,68 @@ public class DBTreeViewer extends JFrame {
 		} else {
 			LOG.info("No duplicate hashes found.");
 		}
+		DupsCount dups = markDuplicateFolders();
+		LOG.info("TOTAL Duplicate files: " + dups.duplicates + " / " + (dups.duplicates+dups.unique) );
+		tree.repaint();
+	}
+
+	record DupsCount(int duplicates, int unique) {
+		static DupsCount sum(List<DupsCount> dCounts) {
+			int duplicates = 0;
+			int unique = 0;
+			for (DupsCount dc : dCounts) {
+				duplicates += dc.duplicates;
+				unique += dc.unique;
+			}
+			return new DupsCount(duplicates, unique);
+		}
+		DupsCount add(DupsCount other) {
+			return new DupsCount(this.duplicates + other.duplicates, this.unique + other.unique);
+		}
+	}
+
+	
+	static Set<String> duplicateSHAs = new HashSet<>();
+	static Map<Long, Color> folderColors = new HashMap<>();
+	
+	public DupsCount markDuplicateFolders() {
+		folderColors.clear();
+		DBFileWalker<DupsCount> walker = new DBFileWalker<>(dbManager);
+		DupsCount result = walker.walk(new DBFileVisitor<>() {
+			
+			@Override
+			public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {
+			}
+
+			@Override
+			public DupsCount visitFolder(ScanLocation location, FolderRecord folderRecord, Path path,
+					List<DupsCount> childVisits) {
+				DupsCount result = DupsCount.sum(childVisits);
+				if (location != null) {
+					if (result.duplicates > 0) {
+						if (result.unique > 0) {
+							folderColors.put(folderRecord.getId(), Color.ORANGE);
+						} else {
+							folderColors.put(folderRecord.getId(), Color.RED);
+						}
+					}
+				}
+				return result;
+			}
+
+			@Override
+			public DupsCount visitFile(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord,
+					Path path) {
+				if (duplicateSHAs.contains(fileRecord.getSha1hash())) {
+					return new DupsCount(1, 0);
+				}
+				return new DupsCount(0, 1);
+			}
+		});
+		return result;
 	}
 
 	public static class HashFilewalker implements DBFileVisitor<Object> {
-		
-		record DupsCount(int duplicates, int unique) {
-			static DupsCount sum(List<DupsCount> dCounts) {
-				int duplicates = 0;
-				int unique = 0;
-				for (DupsCount dc : dCounts) {
-					duplicates += dc.duplicates;
-					unique += dc.unique;
-				}
-				return new DupsCount(duplicates, unique);
-			}
-			DupsCount add(DupsCount other) {
-				return new DupsCount(this.duplicates + other.duplicates, this.unique + other.unique);
-			}
-		}
 		
 		public Map<String, Long> hash2fileIdMap = new HashMap<>();
 		public Map<String, Set<Long>> duplicateHashIDsMap = new HashMap<>();
@@ -289,8 +333,6 @@ public class DBTreeViewer extends JFrame {
 		treeModel.nodeStructureChanged(node);
 	}
 
-	static Set<String> duplicateSHAs = new HashSet<>();
-	
 	/** User object holding the model object and its display text. */
 	private record NodeData(Object object, String label) {
 		@Override
@@ -301,9 +343,15 @@ public class DBTreeViewer extends JFrame {
 		/** Color of the model object, or null for the default color. */
 		Color color() {
 			if (object instanceof ScanLocation l) {
-				return l.getColor();
+				if (folderColors.containsKey(l.getRootFolderId())) {
+					return folderColors.get(l.getRootFolderId());
+				}
+				return Color.BLACK;
 			} else if (object instanceof FolderRecord f) {
-				return f.getColor();
+				if (folderColors.containsKey(f.getId())) {
+					return folderColors.get(f.getId());
+				}
+				return Color.BLACK;
 			} else if (object instanceof FileRecord f) {
 				if (duplicateSHAs.contains(f.getSha1hash())) {
 					return Color.RED;
