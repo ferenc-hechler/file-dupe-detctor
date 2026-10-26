@@ -7,30 +7,37 @@ import java.awt.FlowLayout;
 import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
-import javax.swing.JPanel;
 import javax.swing.JFrame;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTree;
 import javax.swing.SwingUtilities;
-import javax.swing.event.TreeWillExpandListener;
 import javax.swing.event.TreeExpansionEvent;
+import javax.swing.event.TreeWillExpandListener;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.filedupedetector.model.FileRecord;
 import com.filedupedetector.model.FolderRecord;
 import com.filedupedetector.model.ScanLocation;
+import com.filedupedetector.persistence.DBFileWalker;
+import com.filedupedetector.persistence.DBFileWalker.CountResults;
+import com.filedupedetector.persistence.DBFileWalker.DBFileVisitor;
 import com.filedupedetector.persistence.DBManager;
 
 /**
@@ -108,9 +115,7 @@ public class DBTreeViewer extends JFrame {
 
 		JButton showButton = new JButton("Show Selected ScanLocations");
 		showButton.addActionListener(e -> {
-			List<ScanLocation> selected = getCheckedScanLocations();
-			LOG.info("Selected ScanLocations ({}):", selected.size());
-			selected.forEach(loc -> LOG.info("  {}", loc.disp()));
+			onShowSelectedScanLocations();
 		});
 
 		dbManager.getScanLocationRepository().findAll().forEach(loc -> root.add(createLazyNode(loc, loc.disp(), loc.hasRootFolderId())));
@@ -137,6 +142,100 @@ public class DBTreeViewer extends JFrame {
 		setDefaultCloseOperation(EXIT_ON_CLOSE);
 		setSize(900, 600);
 		setLocationRelativeTo(null);
+	}
+
+	
+
+	private void onShowSelectedScanLocations() {
+		List<ScanLocation> selected = getCheckedScanLocations();
+		LOG.info("Selected ScanLocations ({}):", selected.size());
+		selected.forEach(loc -> LOG.info("  {}", loc.disp()));
+		searchForDuplicateHashes(selected);
+		CountResults counts = walkLocations(selected);
+		LOG.info("Counts for selected ScanLocations: " + counts);
+	}
+
+	private void searchForDuplicateHashes(List<ScanLocation> selected) {
+		HashFilewalker hashWalker = new HashFilewalker();
+		DBFileWalker<Object> walker = new DBFileWalker<>(dbManager);
+		walker.walk(selected, hashWalker);
+		duplicateSHAs.clear();
+		duplicateSHAs.addAll(hashWalker.duplicateHashIDsMap.keySet());
+		if (!hashWalker.duplicateHashIDsMap.isEmpty()) {
+			LOG.info("Duplicate hashes found: "+hashWalker.duplicateHashIDsMap.size());
+		} else {
+			LOG.info("No duplicate hashes found.");
+		}
+	}
+
+	public static class HashFilewalker implements DBFileVisitor<Object> {
+		
+		record DupsCount(int duplicates, int unique) {
+			static DupsCount sum(List<DupsCount> dCounts) {
+				int duplicates = 0;
+				int unique = 0;
+				for (DupsCount dc : dCounts) {
+					duplicates += dc.duplicates;
+					unique += dc.unique;
+				}
+				return new DupsCount(duplicates, unique);
+			}
+			DupsCount add(DupsCount other) {
+				return new DupsCount(this.duplicates + other.duplicates, this.unique + other.unique);
+			}
+		}
+		
+		public Map<String, Long> hash2fileIdMap = new HashMap<>();
+		public Map<String, Set<Long>> duplicateHashIDsMap = new HashMap<>();
+		
+		@Override
+		public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {
+		}
+
+		@Override
+		public Object visitFolder(ScanLocation location, FolderRecord folderRecord, Path path,
+				List<Object> childVisits) {
+			return null;
+		}
+
+		@Override
+		public Object visitFile(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord, Path path) {
+			if (fileRecord.getSha1hash() != null) {
+				Long dup = hash2fileIdMap.put(fileRecord.getSha1hash(), fileRecord.getId());
+				if (dup != null) {
+					duplicateHashIDsMap.computeIfAbsent(fileRecord.getSha1hash(), k -> new HashSet<>()).add(dup);
+					duplicateHashIDsMap.get(fileRecord.getSha1hash()).add(fileRecord.getId());
+				}
+			}
+			return null;
+		}
+	}
+	
+	private CountResults walkLocations(List<ScanLocation> selected) {
+		DBFileWalker<CountResults> walker = new DBFileWalker<>(dbManager);
+		CountResults result = walker.walk(selected, new DBFileVisitor<>() {
+			@Override
+			public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {
+			}
+
+			@Override
+			public CountResults visitFolder(ScanLocation location, FolderRecord folderRecord, Path path,
+					List<CountResults> childVisits) {
+				CountResults result = CountResults.count(childVisits);
+				if (location != null) {
+					result = result.add(CountResults.count(folderRecord));
+				}
+				return result;
+			}
+
+			@Override
+			public CountResults visitFile(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord,
+					Path path) {
+				CountResults result = CountResults.count(fileRecord);
+				return result;
+			}
+		});
+		return result;
 	}
 
 	private boolean isScanLocationNode(DefaultMutableTreeNode n) {
@@ -190,6 +289,8 @@ public class DBTreeViewer extends JFrame {
 		treeModel.nodeStructureChanged(node);
 	}
 
+	static Set<String> duplicateSHAs = new HashSet<>();
+	
 	/** User object holding the model object and its display text. */
 	private record NodeData(Object object, String label) {
 		@Override
@@ -204,7 +305,10 @@ public class DBTreeViewer extends JFrame {
 			} else if (object instanceof FolderRecord f) {
 				return f.getColor();
 			} else if (object instanceof FileRecord f) {
-				return f.getColor();
+				if (duplicateSHAs.contains(f.getSha1hash())) {
+					return Color.RED;
+				}
+				return Color.BLACK;
 			}
 			return null;
 		}

@@ -104,7 +104,10 @@ public final class FolderRecord {
 	public String toString() {
 		return "FolderRecord{id=%d, parentFolderId=%d, name='%s'}".formatted(getIdOrNull(), parentFolderId, name);
 	}
-
+	
+	public String disp() {
+		return disp("", 60);
+	}
 	public String disp(String indent) {
 		return disp(indent, 60);
 	}

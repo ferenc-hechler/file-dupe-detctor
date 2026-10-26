@@ -99,6 +99,9 @@ public final class FileRecord {
 	}
 
 
+	public String disp() {
+		return disp("", 60);
+	}
 	public String disp(String indent) {
 		return disp(indent, 60);
 	}
