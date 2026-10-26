@@ -3,8 +3,21 @@ package com.filedupedetector.ui;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.FlowLayout;
+import java.awt.Rectangle;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JPanel;
 import javax.swing.JFrame;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javax.swing.JScrollPane;
 import javax.swing.JTree;
 import javax.swing.SwingUtilities;
@@ -31,6 +44,9 @@ public class DBTreeViewer extends JFrame {
 	/** Marker child so that unloaded folder nodes show an expand handle. */
 	private static final String PLACEHOLDER = "...";
 
+	private static final Logger LOG = LoggerFactory.getLogger(DBTreeViewer.class);
+
+	private final transient Set<DefaultMutableTreeNode> checkedNodes = new HashSet<>();
 	private final transient DBManager dbManager;
 	private final DefaultTreeModel treeModel;
 	private final JTree tree;
@@ -44,6 +60,8 @@ public class DBTreeViewer extends JFrame {
 		this.tree = new JTree(treeModel);
 		tree.setRootVisible(false);
 		tree.setShowsRootHandles(true);
+		final JCheckBox renderBox = new JCheckBox();
+		renderBox.setOpaque(false);
 		tree.setCellRenderer(new DefaultTreeCellRenderer() {
 			private static final long serialVersionUID = 1L;
 
@@ -57,8 +75,42 @@ public class DBTreeViewer extends JFrame {
 						setForeground(c);
 					}
 				}
+				if (value instanceof DefaultMutableTreeNode n && isScanLocationNode(n)) {
+					renderBox.setSelected(checkedNodes.contains(n));
+					JPanel panel = new JPanel(new BorderLayout());
+					panel.setOpaque(false);
+					panel.add(renderBox, BorderLayout.WEST);
+					panel.add(this, BorderLayout.CENTER);
+					return panel;
+				}
 				return this;
 			}
+		});
+
+		// toggle the checkbox of a scan location when clicking on it
+		tree.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mousePressed(MouseEvent e) {
+				TreePath path = tree.getPathForLocation(e.getX(), e.getY());
+				if (path == null || !(path.getLastPathComponent() instanceof DefaultMutableTreeNode n)
+						|| !isScanLocationNode(n)) {
+					return;
+				}
+				Rectangle bounds = tree.getPathBounds(path);
+				if (bounds != null && e.getX() <= bounds.x + renderBox.getPreferredSize().width) {
+					if (!checkedNodes.remove(n)) {
+						checkedNodes.add(n);
+					}
+					tree.repaint(bounds);
+				}
+			}
+		});
+
+		JButton showButton = new JButton("Show Selected ScanLocations");
+		showButton.addActionListener(e -> {
+			List<ScanLocation> selected = getCheckedScanLocations();
+			LOG.info("Selected ScanLocations ({}):", selected.size());
+			selected.forEach(loc -> LOG.info("  {}", loc.disp()));
 		});
 
 		dbManager.getScanLocationRepository().findAll().forEach(loc -> root.add(createLazyNode(loc, loc.disp(), loc.hasRootFolderId())));
@@ -78,10 +130,31 @@ public class DBTreeViewer extends JFrame {
 		});
 
 		setLayout(new BorderLayout());
+		JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
+		top.add(showButton);
+		add(top, BorderLayout.NORTH);
 		add(new JScrollPane(tree), BorderLayout.CENTER);
 		setDefaultCloseOperation(EXIT_ON_CLOSE);
 		setSize(900, 600);
 		setLocationRelativeTo(null);
+	}
+
+	private boolean isScanLocationNode(DefaultMutableTreeNode n) {
+		return n.getUserObject() instanceof NodeData d && d.object() instanceof ScanLocation;
+	}
+
+	/** Returns the ScanLocations whose checkbox is checked. */
+	public List<ScanLocation> getCheckedScanLocations() {
+		List<ScanLocation> result = new ArrayList<>();
+		DefaultMutableTreeNode root = (DefaultMutableTreeNode) treeModel.getRoot();
+		for (int i = 0; i < root.getChildCount(); i++) {
+			DefaultMutableTreeNode n = (DefaultMutableTreeNode) root.getChildAt(i);
+			if (checkedNodes.contains(n) && n.getUserObject() instanceof NodeData d
+					&& d.object() instanceof ScanLocation loc) {
+				result.add(loc);
+			}
+		}
+		return result;
 	}
 
 	/** Creates a node; if it can have children, a placeholder child is added. */

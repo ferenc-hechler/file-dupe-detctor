@@ -13,6 +13,7 @@ public final class CompactDBMain {
     public static void main(String[] args) {
         CompactDBMain showDBApp = new CompactDBMain();
         showDBApp.dbMgr.shutdownCompact();
+        System.out.println("Database compacted successfully.");
     }
 
 
