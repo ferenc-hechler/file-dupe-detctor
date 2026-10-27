@@ -8,6 +8,7 @@ import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -39,6 +40,7 @@ import com.filedupedetector.persistence.DBFileWalker;
 import com.filedupedetector.persistence.DBFileWalker.CountResults;
 import com.filedupedetector.persistence.DBFileWalker.DBFileVisitor;
 import com.filedupedetector.persistence.DBManager;
+import com.filedupedetector.utils.AppUtils;
 
 /**
  * Swing viewer showing scan locations, folders and files in a lazily loaded
@@ -113,9 +115,14 @@ public class DBTreeViewer extends JFrame {
 			}
 		});
 
-		JButton showButton = new JButton("Show Selected ScanLocations");
-		showButton.addActionListener(e -> {
-			onShowSelectedScanLocations();
+		JButton markButton = new JButton("Mark Remote");
+		markButton.addActionListener(e -> {
+			onMarkRemote();
+		});
+
+		JButton joinButton = new JButton("Join");
+		joinButton.addActionListener(e -> {
+			onJoin();
 		});
 
 		dbManager.getScanLocationRepository().findAll().forEach(loc -> root.add(createLazyNode(loc, loc.disp(), loc.hasRootFolderId())));
@@ -136,7 +143,8 @@ public class DBTreeViewer extends JFrame {
 
 		setLayout(new BorderLayout());
 		JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
-		top.add(showButton);
+		top.add(markButton);
+		top.add(joinButton);
 		add(top, BorderLayout.NORTH);
 		add(new JScrollPane(tree), BorderLayout.CENTER);
 		setDefaultCloseOperation(EXIT_ON_CLOSE);
@@ -146,7 +154,82 @@ public class DBTreeViewer extends JFrame {
 
 	
 
-	private void onShowSelectedScanLocations() {
+	private void onJoin() {
+		try {
+			List<ScanLocation> selected = getCheckedScanLocations();
+			LOG.info("Selected ScanLocations ({}):", selected.size());
+			selected.forEach(loc -> LOG.info("  {}", loc.disp()));
+			if (selected.size() < 2) {
+				LOG.warn("At least two ScanLocations must be selected for joining.");
+				return;
+			}
+			ScanLocation first = selected.get(0);
+			ScanLocation rootLocation = new ScanLocation();
+			rootLocation.setId(0L);
+			rootLocation.setDisplayName(first.getDisplayName());
+			rootLocation.setRootPath(first.getRootPath());
+			rootLocation.setVolName(first.getVolName());
+			rootLocation.setVolType(first.getVolType());
+			rootLocation.setVolSize(first.getVolSize());
+			rootLocation.setVolVSN(first.getVolVSN());
+			rootLocation.setType(first.getType());
+			rootLocation.setRootFolderId(null);
+			for (int i = 1; i < selected.size(); i++) {
+				ScanLocation other = selected.get(i);
+				verifyJoinable(rootLocation, other);
+			}
+			LOG.info("Joining ScanLocations into: " + rootLocation.disp());
+		}
+		catch (IllegalStateException ex) {
+			LOG.error("Error joining ScanLocations: " + ex.getMessage());
+		}
+		tree.repaint();
+	}
+
+
+
+	private void verifyJoinable(ScanLocation rootScanLocation, ScanLocation otherLocation) {
+		if (!otherLocation.getType().equals(rootScanLocation.getType())) {
+			throw new IllegalStateException("Cannot join ScanLocations with different types: "
+					+ otherLocation.disp() + " vs " + rootScanLocation.disp());
+		}
+		if (!otherLocation.getVolVSN().equals(rootScanLocation.getVolVSN())) {
+			throw new IllegalStateException("Cannot join ScanLocations with different volume VSNs: "
+					+ otherLocation.disp() + " vs " + rootScanLocation.disp());
+		}
+		if (!otherLocation.getVolName().equals(rootScanLocation.getVolName())) {
+			throw new IllegalStateException("Cannot join ScanLocations with different volume names: "
+					+ otherLocation.disp() + " vs " + rootScanLocation.disp());
+		}
+		if (!otherLocation.getVolType().equals(rootScanLocation.getVolType())) {
+			throw new IllegalStateException("Cannot join ScanLocations with different volume types: "
+					+ otherLocation.disp() + " vs " + rootScanLocation.disp());
+		}
+		if (otherLocation.getVolSize() != rootScanLocation.getVolSize()) {
+			throw new IllegalStateException("Cannot join ScanLocations with different volume sizes: "
+					+ otherLocation.disp() + " vs " + rootScanLocation.disp());
+		}
+		Path rootPath = Paths.get(rootScanLocation.getRootPath());
+		Path otherPath = Paths.get(otherLocation.getRootPath());
+		if (rootPath.startsWith(otherPath)) {
+			rootScanLocation.setRootPath(otherLocation.getRootPath());
+			rootScanLocation.setDisplayName(otherLocation.getDisplayName());
+		}
+		else if (!otherPath.startsWith(rootPath)) {
+			Path commonPath = rootPath.getParent();
+			while (commonPath != null && !otherPath.startsWith(commonPath)) {
+				commonPath = commonPath.getParent();
+			}
+			rootScanLocation.setRootPath(commonPath != null ? AppUtils.normFilename(commonPath) : "/");
+			if (!rootScanLocation.getDisplayName().startsWith("PARENT: ")) {
+				rootScanLocation.setDisplayName("PARENT: " + otherLocation.getDisplayName());
+			}
+		}
+	}
+
+
+
+	private void onMarkRemote() {
 		List<ScanLocation> selected = getCheckedScanLocations();
 		LOG.info("Selected ScanLocations ({}):", selected.size());
 		selected.forEach(loc -> LOG.info("  {}", loc.disp()));
