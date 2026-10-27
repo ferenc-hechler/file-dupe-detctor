@@ -159,12 +159,12 @@ public class DBTreeViewer extends JFrame {
 		HashFilewalker hashWalker = new HashFilewalker();
 		DBFileWalker<Object> walker = new DBFileWalker<>(dbManager);
 		walker.walk(selected, hashWalker);
-		duplicateSHAs.clear();
-		duplicateSHAs.addAll(hashWalker.duplicateHashIDsMap.keySet());
+		markedSHAs.clear();
+		markedSHAs.putAll(hashWalker.hash2fileIdMap);
 		if (!hashWalker.duplicateHashIDsMap.isEmpty()) {
-			LOG.info("Duplicate hashes found: "+hashWalker.duplicateHashIDsMap.size());
+			LOG.info("Duplicate in marked files found: "+hashWalker.duplicateHashIDsMap.size());
 		} else {
-			LOG.info("No duplicate hashes found.");
+			LOG.info("No duplicates inside marked files found.");
 		}
 		DupsCount dups = markDuplicateFolders();
 		LOG.info("TOTAL Duplicate files: " + dups.duplicates + " / " + (dups.duplicates+dups.unique) );
@@ -187,7 +187,7 @@ public class DBTreeViewer extends JFrame {
 	}
 
 	
-	static Set<String> duplicateSHAs = new HashSet<>();
+	static Map<String, Long> markedSHAs = new HashMap<>();
 	static Map<Long, Color> folderColors = new HashMap<>();
 	
 	public DupsCount markDuplicateFolders() {
@@ -218,7 +218,8 @@ public class DBTreeViewer extends JFrame {
 			@Override
 			public DupsCount visitFile(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord,
 					Path path) {
-				if (duplicateSHAs.contains(fileRecord.getSha1hash())) {
+				Long dup = markedSHAs.get(fileRecord.getSha1hash());
+				if (dup != null && dup != fileRecord.getId()) {
 					return new DupsCount(1, 0);
 				}
 				return new DupsCount(0, 1);
@@ -247,8 +248,12 @@ public class DBTreeViewer extends JFrame {
 			if (fileRecord.getSha1hash() != null) {
 				Long dup = hash2fileIdMap.put(fileRecord.getSha1hash(), fileRecord.getId());
 				if (dup != null) {
-					duplicateHashIDsMap.computeIfAbsent(fileRecord.getSha1hash(), k -> new HashSet<>()).add(dup);
-					duplicateHashIDsMap.get(fileRecord.getSha1hash()).add(fileRecord.getId());
+					hash2fileIdMap.put(fileRecord.getSha1hash(), 0L);
+					Set<Long> dupSet = duplicateHashIDsMap.computeIfAbsent(fileRecord.getSha1hash(), k -> new HashSet<>());
+					if (dup != 0) {
+						dupSet.add(dup);
+					}
+					dupSet.add(fileRecord.getId());
 				}
 			}
 			return null;
@@ -353,7 +358,8 @@ public class DBTreeViewer extends JFrame {
 				}
 				return Color.BLACK;
 			} else if (object instanceof FileRecord f) {
-				if (duplicateSHAs.contains(f.getSha1hash())) {
+				Long dup = markedSHAs.get(f.getSha1hash());
+				if (dup != null && dup != f.getId()) {
 					return Color.RED;
 				}
 				return Color.BLACK;

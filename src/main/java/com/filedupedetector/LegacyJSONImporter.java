@@ -44,7 +44,7 @@ public class LegacyJSONImporter {
 	private int locationCount;
 
 	public LegacyJSONImporter() {
-		JdbcConnectionManager connectionManager = new JdbcConnectionManager(true);
+		JdbcConnectionManager connectionManager = new JdbcConnectionManager(false);
 		this.scanLocationRepository = new JdbcScanLocationRepository(connectionManager);
 		this.fileRecordRepository = new JdbcFileRecordRepository(connectionManager);
 		this.folderRecordRepository = new JdbcFolderRecordRepository(connectionManager);
@@ -195,7 +195,33 @@ public class LegacyJSONImporter {
 
 	public static void main(String[] args) {
 		LegacyJSONImporter importer = new LegacyJSONImporter();
-		importer.importFile(args.length > 0 ? args[0] : "output/export-specs.json");
+		if (args.length > 0) {
+			for (String arg : args) {
+				importer.importFile(arg);
+			}
+			System.out.println("Import completed successfully.");
+			return;
+		}
+//		importer.importFile("input/JSON/store-99-BACKUP_PATRICK.json");
+//		importer.importFile("input/JSON/store-99-TS-Videos.json");
+//		importer.importFile("input/JSON/store-CANON-2024.json");
+//		importer.importFile("input/JSON/store-00-03.json");
+//		importer.importFile("input/JSON/store-00-04.json");
+//		importer.importFile("input/JSON/store-99-WD-Elements-1.json");
+//		importer.importFile("input/JSON/store-99-Intenso_Backup.json");
+
+//		importer.importFile("input/JSON/store-99-WD-Elements-2.json");
+//		importer.importFile("input/JSON/store-99-PB_SuS3500.json");
+//		importer.importFile("input/JSON/store-99-int-Daten_D.json");
+//		importer.importFile("input/JSON/store-99-BK2-4T.json");
+//		importer.importFile("input/JSON/store-00-05.json");
+//		importer.importFile("input/JSON/store-99-BK3-4T.json");
+//		importer.importFile("input/JSON/store-99-BK1-4T.json");
+		
+//		importer.importFile("input/JSON/store-99-4b.json");
+		
+//		importer.importFile(args.length > 0 ? args[0] : "input/JSON/store-99-BACKUP_PATRICK.json");
+		System.out.println("Import completed successfully.");
 	}
 
 }

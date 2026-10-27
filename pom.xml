@@ -16,8 +16,10 @@
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <!-- <main.class>com.filedupedetector.Main</main.class> -->
-        <main.class>com.filedupedetector.ScanWithPCloudFolderWalkerMain</main.class>
+        <!-- 
+		<main.class>com.filedupedetector.ScanWithPCloudFolderWalkerMain</main.class> 
+        -->
+        <main.class>com.filedupedetector.LegacyJSONImporter</main.class>
 
         <h2.version>2.5.252</h2.version>
         <pcloud.version>1.11.0</pcloud.version>

@@ -88,7 +88,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <assertj.version>3.27.7</assertj.version>
     <junit.version>5.14.4</junit.version>
-    <main.class>com.filedupedetector.ScanWithPCloudFolderWalkerMain</main.class>
+    <main.class>com.filedupedetector.LegacyJSONImporter</main.class>
     <pcloud.version>1.11.0</pcloud.version>
     <h2.version>2.5.252</h2.version>
     <maven.surefire.plugin.version>3.3.1</maven.surefire.plugin.version>
