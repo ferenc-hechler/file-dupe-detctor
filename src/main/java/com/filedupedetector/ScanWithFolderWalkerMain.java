@@ -290,6 +290,8 @@ public final class ScanWithFolderWalkerMain {
         scanApp.scanFileFolder("./testinput/test1");
         scanApp.scanFileFolder("./testinput/test2");
         scanApp.scanFileFolder("./testinput/test3");
+        scanApp.scanFileFolder("./testinput/test1/sub1b");
+        
         scanApp.dbMgr.showDBFiles(3);
     }
 

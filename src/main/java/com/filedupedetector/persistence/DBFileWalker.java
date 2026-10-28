@@ -18,15 +18,16 @@ import com.filedupedetector.scan.FolderVisitor;
  * {@link FolderVisitor}. Paths passed to the visitor are logical pCloud paths
  * (e.g. {@code /Documents/Sub}). Errors are reported and the walk continues.
  */
-public final class DBFileWalker<T> {
+public class DBFileWalker<T> {
 
     private final DBManager dbMgr;
     
     public interface DBFileVisitor<T> {
         void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path);
-        	T visitFolder(ScanLocation location, FolderRecord folderRecord, Path path, List<T> childVisits);
-        	T visitFile(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord, Path path);
+        T visitFolder(ScanLocation location, FolderRecord folderRecord, Path path, List<T> childVisits);
+        T visitFile(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord, Path path);
     }
+
     
     public static record CountResults(int folderCount, int fileCount, long byteCount) {
         public static CountResults count(List<CountResults> entries) {

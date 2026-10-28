@@ -40,6 +40,8 @@ import com.filedupedetector.persistence.DBFileWalker;
 import com.filedupedetector.persistence.DBFileWalker.CountResults;
 import com.filedupedetector.persistence.DBFileWalker.DBFileVisitor;
 import com.filedupedetector.persistence.DBManager;
+import com.filedupedetector.persistence.SimpleDBFileWalker;
+import com.filedupedetector.persistence.SimpleDBFileWalker.SimpleDBFileVisitor;
 import com.filedupedetector.utils.AppUtils;
 
 /**
@@ -153,6 +155,31 @@ public class DBTreeViewer extends JFrame {
 	}
 
 	
+	public static class FileCopyVisitor extends SimpleDBFileVisitor {
+		private final ScanLocation rootLocation;
+		private Map<Path, FolderRecord> path2folderMap;
+
+		public FileCopyVisitor(DBManager dbMgr, ScanLocation rootLocation) {
+			this.rootLocation = rootLocation;
+			this.path2folderMap = new HashMap<>();
+			path2folderMap.put(Paths.get(rootLocation.getRootPath()), dbMgr.getFolderRecordRepository().findById(rootLocation.getRootFolderId()));
+		}
+
+		@Override
+		public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {}
+
+		@Override
+		public void folderVisit(ScanLocation location, FolderRecord folderRecord, Path path) {}
+
+		@Override
+		public void fileVisit(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord, Path path) {
+			LOG.info("fileVisit: " + path);
+			if (fileRecord != null) {
+				LOG.info(fileRecord.disp());
+			}
+		}
+		
+	}
 
 	private void onJoin() {
 		try {
@@ -179,6 +206,8 @@ public class DBTreeViewer extends JFrame {
 				verifyJoinable(rootLocation, other);
 			}
 			LOG.info("Joining ScanLocations into: " + rootLocation.disp());
+			SimpleDBFileWalker walker = new SimpleDBFileWalker(dbManager);
+			walker.walk(selected, new FileCopyVisitor(dbManager, rootLocation));
 		}
 		catch (IllegalStateException ex) {
 			LOG.error("Error joining ScanLocations: " + ex.getMessage());
