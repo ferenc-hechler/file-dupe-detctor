@@ -172,7 +172,14 @@ public class DBTreeViewer extends JFrame {
 			folderCache.put(rootPath, dbMgr.getFolderRecordRepository().findById(location.getRootFolderId()));
 		}
 
+		public Path getRootPath() {
+			return rootPath;
+		}
+		
 		public FolderRecord getOrCreateFolder(Path path) {
+			if (path == null) {
+				return null;
+			}
 			FolderRecord folder = folderCache.get(path);
 			if (folder != null) {
 				return folder;
@@ -202,27 +209,45 @@ public class DBTreeViewer extends JFrame {
 		}
 	}
 	
-	public static class FileCopyVisitor extends SimpleDBFileVisitor {
-		private final ScanLocation rootLocation;
-		private Map<Path, FolderRecord> path2folderMap;
+	public class FileCopyVisitor extends SimpleDBFileVisitor {
 
-		public FileCopyVisitor(DBManager dbMgr, ScanLocation rootLocation) {
-			this.rootLocation = rootLocation;
-			this.path2folderMap = new HashMap<>();
-			path2folderMap.put(Paths.get(rootLocation.getRootPath()), dbMgr.getFolderRecordRepository().findById(rootLocation.getRootFolderId()));
+		private FolderCreator folderCreator;
+
+		public FileCopyVisitor(FolderCreator folderCreator) {
+			this.folderCreator = folderCreator;
 		}
 
 		@Override
 		public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {}
 
 		@Override
-		public void folderVisit(ScanLocation location, FolderRecord folderRecord, Path path) {}
+		public void folderVisit(ScanLocation location, FolderRecord folderRecord, Path path) {
+			folderCreator.getOrCreateFolder(path);
+		}
 
 		@Override
 		public void fileVisit(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord, Path path) {
-			LOG.info("fileVisit: " + path);
 			if (fileRecord != null) {
-				LOG.info(fileRecord.disp());
+				FolderRecord parentFolder = folderCreator.getOrCreateFolder(path.getParent());
+				if (!parentFolder.isNew()) {
+					FileRecord existing = dbMgr.getFileRecordRepository().findByParentFolderAndName(parentFolder.getId(), fileRecord.getName());
+					if (existing != null) {
+						existing.setSizeBytes(fileRecord.getSizeBytes());
+						existing.setLastModifiedAt(fileRecord.getLastModifiedAt());
+						if (fileRecord.getSha1hash() != null) {
+							existing.setSha1hash(fileRecord.getSha1hash());
+						}
+						dbMgr.getFileRecordRepository().upsert(existing);
+						return;
+					}
+				}
+				FileRecord newFile = new FileRecord();
+				newFile.setParentFolderId(parentFolder.getId());
+				newFile.setName(fileRecord.getName());
+				newFile.setSizeBytes(fileRecord.getSizeBytes());
+				newFile.setLastModifiedAt(fileRecord.getLastModifiedAt());
+				newFile.setSha1hash(fileRecord.getSha1hash());
+				dbMgr.getFileRecordRepository().upsert(newFile);
 			}
 		}
 		
@@ -274,8 +299,9 @@ public class DBTreeViewer extends JFrame {
     					root.getChildCount());
             }
 			LOG.info("Joining ScanLocations into: " + rootLocation.disp());
-			// SimpleDBFileWalker walker = new SimpleDBFileWalker(dbMgr);
-			// walker.walk(selected, new FileCopyVisitor(dbMgr, rootLocation));
+			FolderCreator folderCreator = new FolderCreator(rootLocation);
+			SimpleDBFileWalker walker = new SimpleDBFileWalker(dbMgr);
+			walker.walk(selected, new FileCopyVisitor(folderCreator));
 		}
 		catch (IllegalStateException ex) {
 			LOG.error("Error joining ScanLocations: " + ex.getMessage());
