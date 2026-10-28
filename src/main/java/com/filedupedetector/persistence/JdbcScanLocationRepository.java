@@ -148,5 +148,18 @@ public final class JdbcScanLocationRepository implements ScanLocationRepository 
 			throw new IllegalStateException("Failed to delete ScanLocation with id: " + id, e);
 		}
 	}
-	
+
+	@Override
+	public void rename(Long id, String newDisplayName) {
+        String sql = "UPDATE scan_location SET display_name = ? "
+                + "WHERE id = ?";
+		try (Connection conn = connectionManager.openConnection();
+			 PreparedStatement ps = conn.prepareStatement(sql)) {
+			ps.setString(1, newDisplayName);
+			ps.setLong(2, id);
+			ps.executeUpdate();
+		} catch (SQLException e) {
+			throw new IllegalStateException("Failed to rename ScanLocation with id: " + id, e);
+		}
+	}
 }

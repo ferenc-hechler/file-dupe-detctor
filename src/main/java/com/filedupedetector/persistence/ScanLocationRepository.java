@@ -12,6 +12,8 @@ public interface ScanLocationRepository {
 
     ScanLocation save(ScanLocation location);
 
+    void rename(Long id, String newDisplayName);
+
 	void delete(Long id);
 
 }

@@ -369,7 +369,7 @@ public class DBTreeViewer extends JFrame {
 				return;
 			}
 			location.setDisplayName(newName.trim());
-			dbMgr.getScanLocationRepository().save(location);
+			dbMgr.getScanLocationRepository().rename(location.getId(), newName.trim());
 			for (int i = 0; i < root.getChildCount(); i++) {
 				DefaultMutableTreeNode n = (DefaultMutableTreeNode) root.getChildAt(i);
 				if (n.getUserObject() instanceof NodeData d && d.object() instanceof ScanLocation l
