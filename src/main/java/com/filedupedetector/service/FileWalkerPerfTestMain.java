@@ -116,7 +116,7 @@ public final class FileWalkerPerfTestMain {
                     rootFolder = folderRecordRepository.upsert(rootFolder);
                     rootFolder.setNew(false);
                 }
-                rootFolder.setFullPath(location.getRootPath());
+                rootFolder.setFullPathstr(location.getRootPath());
                 location.setRootFolderId(rootFolder.getId());
                 scanLocationRepository.save(location);
             }
@@ -147,7 +147,7 @@ public final class FileWalkerPerfTestMain {
                 currentFolder = folderRecordRepository.upsert(currentFolder);
                 currentFolder.setNew(false);
             }
-            currentFolder.setFullPath(oldCurrentFolder.getFullPath() + "/" + folderName);
+            currentFolder.setFullPathstr(oldCurrentFolder.getFullPathstr() + "/" + folderName);
 //            System.out.println("P["+oldCurrentFolder.getId()+"]/DIR["+currentFolder.getId()+"]: " + dir);
             return FileVisitResult.CONTINUE;
         }

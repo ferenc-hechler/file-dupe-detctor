@@ -1,7 +1,10 @@
 package com.filedupedetector.model;
 
 import java.awt.Color;
+import java.nio.file.Path;
 import java.util.Objects;
+
+import com.filedupedetector.utils.AppUtils;
 
 /**
  * Persisted information about a folder
@@ -13,11 +16,13 @@ public final class FolderRecord {
 	private Long parentFolderId;
 	
 	private transient boolean isNew;
-	private transient String fullPath;
+	private transient String fullPathstr;
+	private transient Path fullPath;
     private transient boolean ROOT;
 
 	public FolderRecord() {
 	    this.isNew = false;
+	    this.fullPathstr = null;
 	    this.fullPath = null;
 	}
 
@@ -26,6 +31,7 @@ public final class FolderRecord {
 		this.name = Objects.requireNonNull(name, "name must not be null");
 		this.parentFolderId = parentFolderId;
 		this.isNew = (id == -1);
+		this.fullPathstr = null;
 		this.fullPath = null;
 		this.ROOT = false;
 	}
@@ -62,11 +68,26 @@ public final class FolderRecord {
         return isNew;
     }
     
-    public void setFullPath(String fulltPath) {
-         this.fullPath = fulltPath;   
+    public void setFullPathstr(String fullPathstr) {
+        this.fullPathstr = fullPathstr;   
+   }
+    public void setFullPath(Path fullPath) {
+        this.fullPath = fullPath;   
+   }
+   
+    public String getFullPathstr() {
+    	// Lazy initialization of fullPathstr from fullPath if needed
+    	if (fullPathstr == null && fullPath != null) {
+    		fullPathstr = AppUtils.normFilename(fullPath);
+    	}
+        return fullPathstr;
     }
     
-    public String getFullPath() {
+    public Path getFullPath() {
+    	// Lazy initialization of fullPath from fullPathstr if needed
+    	if (fullPath == null && fullPathstr != null) {
+    		fullPath = AppUtils.normPath(fullPathstr);
+    	}
         return fullPath;
     }
     

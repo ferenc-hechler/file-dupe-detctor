@@ -136,4 +136,17 @@ public final class JdbcScanLocationRepository implements ScanLocationRepository 
         location.setRootFolderId(rs.getLong("root_folder_id"));
         return location;
     }
+
+	@Override
+	public void delete(Long id) {
+		String sql = "DELETE FROM scan_location WHERE id = ?";
+		try (Connection conn = connectionManager.openConnection();
+			 PreparedStatement ps = conn.prepareStatement(sql)) {
+			ps.setLong(1, id);
+			ps.executeUpdate();
+		} catch (SQLException e) {
+			throw new IllegalStateException("Failed to delete ScanLocation with id: " + id, e);
+		}
+	}
+	
 }

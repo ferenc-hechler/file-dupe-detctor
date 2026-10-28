@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import javax.swing.JButton;
@@ -56,13 +57,13 @@ public class DBTreeViewer extends JFrame {
 	private static final Logger LOG = LoggerFactory.getLogger(DBTreeViewer.class);
 
 	private final transient Set<DefaultMutableTreeNode> checkedNodes = new HashSet<>();
-	private final transient DBManager dbManager;
+	private final transient DBManager dbMgr;
 	private final DefaultTreeModel treeModel;
 	private final JTree tree;
 
-	public DBTreeViewer(DBManager dbManager) {
+	public DBTreeViewer(DBManager dbMgr) {
 		super("File Dupe Detector - DB Viewer");
-		this.dbManager = dbManager;
+		this.dbMgr = dbMgr;
 
 		DefaultMutableTreeNode root = new DefaultMutableTreeNode("Scan Locations");
 		this.treeModel = new DefaultTreeModel(root);
@@ -125,7 +126,12 @@ public class DBTreeViewer extends JFrame {
 			onJoin();
 		});
 
-		dbManager.getScanLocationRepository().findAll().forEach(loc -> root.add(createLazyNode(loc, loc.disp(), loc.hasRootFolderId())));
+		JButton deleteButton = new JButton("Delete");
+		deleteButton.addActionListener(e -> {
+			onDelete();
+		});
+
+		dbMgr.getScanLocationRepository().findAll().forEach(loc -> root.add(createLazyNode(loc, loc.disp(), loc.hasRootFolderId())));
 		// children were added after the tree was created -> notify the model
 		treeModel.reload();
 
@@ -145,6 +151,7 @@ public class DBTreeViewer extends JFrame {
 		JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
 		top.add(markButton);
 		top.add(joinButton);
+		top.add(deleteButton);
 		add(top, BorderLayout.NORTH);
 		add(new JScrollPane(tree), BorderLayout.CENTER);
 		setDefaultCloseOperation(EXIT_ON_CLOSE);
@@ -152,7 +159,46 @@ public class DBTreeViewer extends JFrame {
 		setLocationRelativeTo(null);
 	}
 
-	
+	class FolderCreator {
+		private final ScanLocation location;
+		private final Path rootPath;
+		private final Map<Path, FolderRecord> folderCache = new HashMap<>();
+
+		public FolderCreator(ScanLocation location) {
+			this.location = location;
+			this.rootPath = AppUtils.normPath(location.getRootPath());
+			folderCache.put(rootPath, dbMgr.getFolderRecordRepository().findById(location.getRootFolderId()));
+		}
+
+		public FolderRecord getOrCreateFolder(Path path) {
+			FolderRecord folder = folderCache.get(path);
+			if (folder != null) {
+				return folder;
+			}
+			if (!path.startsWith(rootPath)) {
+				throw new IllegalArgumentException("Path " + path + " is not under root path " + location.getRootPath());
+			}
+			Path parentPath = path.getParent();
+			String folderName = path.getFileName().toString();
+			FolderRecord parentFolder = getOrCreateFolder(parentPath);
+			if (!parentFolder.isNew()) {
+				FolderRecord existing = dbMgr.getFolderRecordRepository().findByParentFolderAndName(parentFolder.getId(), folderName);
+				if (existing != null) {
+					existing.setFullPath(path);
+					folderCache.put(path, existing);
+					return existing;
+				}
+			}
+			FolderRecord newFolder = new FolderRecord();
+			newFolder.setParentFolderId(parentFolder.getId());
+			newFolder.setName(folderName);
+			dbMgr.getFolderRecordRepository().upsert(newFolder);
+			newFolder.setNew(true);
+			newFolder.setFullPath(path);
+			folderCache.put(path, newFolder);
+			return newFolder;
+		}
+	}
 
 	private void onJoin() {
 		try {
@@ -178,6 +224,27 @@ public class DBTreeViewer extends JFrame {
 				ScanLocation other = selected.get(i);
 				verifyJoinable(rootLocation, other);
 			}
+			FolderRecord rootFolder;
+			final String rootPath = rootLocation.getRootPath();
+			Optional<ScanLocation> origRootLoc = selected.stream().filter(loc -> rootPath.equals(loc.getRootPath())).findAny();
+			if (origRootLoc.isPresent()) {
+				rootLocation = origRootLoc.get();
+				rootFolder = dbMgr.getFolderRecordRepository().findById(rootLocation.getRootFolderId());
+                rootFolder.setFullPathstr(rootLocation.getRootPath());
+			}
+			else {
+                rootFolder = new FolderRecord();
+                rootFolder.setName(rootLocation.getRootPath());
+                rootFolder.setParentFolderId(null);
+                rootFolder = dbMgr.getFolderRecordRepository().upsert(rootFolder);
+                rootFolder.setNew(true);
+                rootFolder.setFullPathstr(rootLocation.getRootPath());
+                rootLocation.setRootFolderId(rootFolder.getId());
+                rootLocation = dbMgr.getScanLocationRepository().save(rootLocation);
+    			DefaultMutableTreeNode root = (DefaultMutableTreeNode) treeModel.getRoot();
+    			treeModel.insertNodeInto(createLazyNode(rootLocation, rootLocation.disp(), true), root,
+    					root.getChildCount());
+            }
 			LOG.info("Joining ScanLocations into: " + rootLocation.disp());
 		}
 		catch (IllegalStateException ex) {
@@ -185,6 +252,39 @@ public class DBTreeViewer extends JFrame {
 		}
 		tree.repaint();
 	}
+
+
+	private void onDelete() {
+		try {
+			List<ScanLocation> selected = getCheckedScanLocations();
+			LOG.info("Selected ScanLocations ({}):", selected.size());
+			selected.forEach(loc -> LOG.info("  {}", loc.disp()));
+			if (selected.size() == 0) {
+				LOG.warn("At least one ScanLocations must be selected for deletion.");
+				return;
+			}
+			DefaultMutableTreeNode root = (DefaultMutableTreeNode) treeModel.getRoot();
+			for (ScanLocation loc : selected) {
+				dbMgr.getScanLocationRepository().delete(loc.getId());
+				dbMgr.recursiveDeleteFolder(loc.getRootFolderId());
+				LOG.info("Deleted ScanLocation: " + loc.disp());
+				for (int i = root.getChildCount() - 1; i >= 0; i--) {
+					DefaultMutableTreeNode n = (DefaultMutableTreeNode) root.getChildAt(i);
+					if (n.getUserObject() instanceof NodeData d && d.object() instanceof ScanLocation l
+							&& l.getId() == loc.getId()) {
+						checkedNodes.remove(n);
+						treeModel.removeNodeFromParent(n);
+					}
+				}
+			}
+			LOG.info("Deleted ScanLocations finished.");
+		}
+		catch (IllegalStateException ex) {
+			LOG.error("Error deleting ScanLocations: " + ex.getMessage());
+		}
+		tree.repaint();
+	}
+
 
 
 
@@ -240,7 +340,7 @@ public class DBTreeViewer extends JFrame {
 
 	private void searchForDuplicateHashes(List<ScanLocation> selected) {
 		HashFilewalker hashWalker = new HashFilewalker();
-		DBFileWalker<Object> walker = new DBFileWalker<>(dbManager);
+		DBFileWalker<Object> walker = new DBFileWalker<>(dbMgr);
 		walker.walk(selected, hashWalker);
 		markedSHAs.clear();
 		markedSHAs.putAll(hashWalker.hash2fileIdMap);
@@ -275,7 +375,7 @@ public class DBTreeViewer extends JFrame {
 	
 	public DupsCount markDuplicateFolders() {
 		folderColors.clear();
-		DBFileWalker<DupsCount> walker = new DBFileWalker<>(dbManager);
+		DBFileWalker<DupsCount> walker = new DBFileWalker<>(dbMgr);
 		DupsCount result = walker.walk(new DBFileVisitor<>() {
 			
 			@Override
@@ -344,7 +444,7 @@ public class DBTreeViewer extends JFrame {
 	}
 	
 	private CountResults walkLocations(List<ScanLocation> selected) {
-		DBFileWalker<CountResults> walker = new DBFileWalker<>(dbManager);
+		DBFileWalker<CountResults> walker = new DBFileWalker<>(dbMgr);
 		CountResults result = walker.walk(selected, new DBFileVisitor<>() {
 			@Override
 			public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {
@@ -412,9 +512,9 @@ public class DBTreeViewer extends JFrame {
 		}
 		if (folderId != null) {
 			final long id = folderId;
-			dbManager.getFolderRecordRepository().findByParentFolder(id)
+			dbMgr.getFolderRecordRepository().findByParentFolder(id)
 					.forEach(f -> node.add(createLazyNode(f, f.disp(""), true)));
-			for (FileRecord file : dbManager.getFileRecordRepository().findByParentFolder(id)) {
+			for (FileRecord file : dbMgr.getFileRecordRepository().findByParentFolder(id)) {
 				node.add(new DefaultMutableTreeNode(new NodeData(file, file.disp("")), false));
 			}
 		}
@@ -452,7 +552,7 @@ public class DBTreeViewer extends JFrame {
 	}
 
 	public static void main(String[] args) {
-		DBManager dbManager = new DBManager(false);
-		SwingUtilities.invokeLater(() -> new DBTreeViewer(dbManager).setVisible(true));
+		DBManager dbMgr = new DBManager(false);
+		SwingUtilities.invokeLater(() -> new DBTreeViewer(dbMgr).setVisible(true));
 	}
 }

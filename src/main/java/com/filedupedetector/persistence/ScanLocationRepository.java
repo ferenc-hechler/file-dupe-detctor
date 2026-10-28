@@ -12,4 +12,6 @@ public interface ScanLocationRepository {
 
     ScanLocation save(ScanLocation location);
 
+	void delete(Long id);
+
 }

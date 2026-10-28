@@ -96,7 +96,7 @@ public final class ScanWithFolderWalkerMain {
                     rootFolder = dbMgr.getFolderRecordRepository().upsert(rootFolder);
                     rootFolder.setNew(true);
                 }
-                rootFolder.setFullPath(location.getRootPath());
+                rootFolder.setFullPathstr(location.getRootPath());
                 location.setRootFolderId(rootFolder.getId());
                 dbMgr.getScanLocationRepository().save(location);
             }
@@ -185,9 +185,9 @@ public final class ScanWithFolderWalkerMain {
                 currentFolder.setNew(true);
             }
             if (oldCurrentFolder.isROOT()) {
-                currentFolder.setFullPath(folderName);
+                currentFolder.setFullPathstr(folderName);
             } else {
-                currentFolder.setFullPath(oldCurrentFolder.getFullPath() + "/" + folderName);
+                currentFolder.setFullPathstr(oldCurrentFolder.getFullPathstr() + "/" + folderName);
             }
 
         }
