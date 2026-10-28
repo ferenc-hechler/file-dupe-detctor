@@ -126,7 +126,7 @@ public class DBTreeViewer extends JFrame {
 
 		JButton joinButton = new JButton("Join");
 		joinButton.addActionListener(e -> {
-			onJoin();
+			onQuickJoin();
 		});
 
 		JButton renameButton = new JButton("Rename");
@@ -309,6 +309,123 @@ public class DBTreeViewer extends JFrame {
 			FolderCreator folderCreator = new FolderCreator(rootLocation);
 			SimpleDBFileWalker walker = new SimpleDBFileWalker(dbMgr);
 			walker.walk(selected, new FileCopyVisitor(folderCreator));
+		}
+		catch (IllegalStateException ex) {
+			LOG.error("Error joining ScanLocations: " + ex.getMessage());
+		}
+		tree.repaint();
+	}
+
+	public class QuickFileCopyVisitor extends SimpleDBFileVisitor {
+
+		private FolderCreator folderCreator;
+
+		public QuickFileCopyVisitor(FolderCreator folderCreator) {
+			this.folderCreator = folderCreator;
+		}
+
+		@Override
+		public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {
+			if (folderRecord == null) {
+				return;
+			}
+			if (path.equals(folderCreator.getRootPath())) {
+				return;
+			}
+			FolderRecord parentFolder = folderCreator.getOrCreateFolder(path.getParent());
+			String folderName = folderRecord.getName();
+			if (folderName.indexOf('/') >= 0) {
+				folderName = folderName.substring(folderName.lastIndexOf('/') + 1);
+			}
+			FolderRecord existingFolderRecord = dbMgr.getFolderRecordRepository().findByParentFolderAndName(parentFolder.getId(), folderName);
+			if (existingFolderRecord == null) {
+				if (folderRecord.getName().indexOf('/') >= 0) {
+					location.setRootFolderId(null);
+					dbMgr.getScanLocationRepository().save(location);
+					folderRecord.setName(folderName);
+					dbMgr.getFolderRecordRepository().upsert(folderRecord);
+				}
+				dbMgr.getFolderRecordRepository().changeParentFolder(folderRecord.getId(), parentFolder.getId());
+			}
+		}
+
+		@Override
+		public void folderVisit(ScanLocation location, FolderRecord folderRecord, Path path) {}
+
+		@Override
+		public void fileVisit(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord, Path path) {
+			if (fileRecord != null) {
+				FolderRecord parentFolder = folderCreator.getOrCreateFolder(path.getParent());
+				if (!parentFolder.isNew()) {
+					FileRecord existing = dbMgr.getFileRecordRepository().findByParentFolderAndName(parentFolder.getId(), fileRecord.getName());
+					if (existing != null) {
+						// update existing file record only if the new one is newer (to avoid overwriting with older data)
+						if (fileRecord.getLastModifiedAt().isAfter(existing.getLastModifiedAt())) {
+							existing.setSizeBytes(fileRecord.getSizeBytes());
+							existing.setLastModifiedAt(fileRecord.getLastModifiedAt());
+							existing.setSha1hash(fileRecord.getSha1hash());
+							dbMgr.getFileRecordRepository().upsert(existing);
+						}
+						return;
+					}
+				}
+				// destructive move filerecord from old location to new location (parent folder) - this will remove the file from the old location and add it to the new one
+				dbMgr.getFileRecordRepository().changeParentFolder(fileRecord.getId(), parentFolder.getId());
+			}
+		}
+		
+	}
+
+
+	private void onQuickJoin() {
+		try {
+			List<ScanLocation> selected = getCheckedScanLocations();
+			LOG.info("Selected ScanLocations ({}):", selected.size());
+			selected.forEach(loc -> LOG.info("  {}", loc.disp()));
+			if (selected.size() < 2) {
+				LOG.warn("At least two ScanLocations must be selected for joining.");
+				return;
+			}
+			ScanLocation first = selected.get(0);
+			ScanLocation rootLocation = new ScanLocation();
+			rootLocation.setId(0L);
+			rootLocation.setDisplayName(first.getDisplayName());
+			rootLocation.setRootPath(first.getRootPath());
+			rootLocation.setVolName(first.getVolName());
+			rootLocation.setVolType(first.getVolType());
+			rootLocation.setVolSize(first.getVolSize());
+			rootLocation.setVolVSN(first.getVolVSN());
+			rootLocation.setType(first.getType());
+			rootLocation.setRootFolderId(null);
+			for (int i = 1; i < selected.size(); i++) {
+				ScanLocation other = selected.get(i);
+				verifyJoinable(rootLocation, other);
+			}
+			FolderRecord rootFolder;
+			final String rootPath = rootLocation.getRootPath();
+			Optional<ScanLocation> origRootLoc = selected.stream().filter(loc -> rootPath.equals(loc.getRootPath())).findAny();
+			if (origRootLoc.isPresent()) {
+				rootLocation = origRootLoc.get();
+				rootFolder = dbMgr.getFolderRecordRepository().findById(rootLocation.getRootFolderId());
+                rootFolder.setFullPathstr(rootLocation.getRootPath());
+			}
+			else {
+                rootFolder = new FolderRecord();
+                rootFolder.setName(rootLocation.getRootPath());
+                rootFolder.setParentFolderId(null);
+                rootFolder = dbMgr.getFolderRecordRepository().upsert(rootFolder);
+                rootFolder.setNew(true);
+                rootFolder.setFullPathstr(rootLocation.getRootPath());
+                rootLocation.setRootFolderId(rootFolder.getId());
+                rootLocation = dbMgr.getScanLocationRepository().save(rootLocation);
+    			DefaultMutableTreeNode root = (DefaultMutableTreeNode) treeModel.getRoot();
+    			treeModel.insertNodeInto(createLazyNode(rootLocation, rootLocation.disp(), true), root,
+    					root.getChildCount());
+            }
+			LOG.info("Joining ScanLocations into: " + rootLocation.disp());
+			FolderCreator folderCreator = new FolderCreator(rootLocation);
+			SimpleDBFileWalker walker = new SimpleDBFileWalker(dbMgr);
+			walker.walk(selected, new QuickFileCopyVisitor(folderCreator));
 		}
 		catch (IllegalStateException ex) {
 			LOG.error("Error joining ScanLocations: " + ex.getMessage());

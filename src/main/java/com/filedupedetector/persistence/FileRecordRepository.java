@@ -15,6 +15,8 @@ public interface FileRecordRepository {
 	List<FileRecord> findBySHA1(String sha1hash);
 
     FileRecord upsert(FileRecord record);
+    
+    void changeParentFolder(long fileRecordId, long newParentFolderId);
 
     void deleteByID(List<Long> idsToDelete);
 

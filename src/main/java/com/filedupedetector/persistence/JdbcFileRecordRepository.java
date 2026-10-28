@@ -187,4 +187,19 @@ public final class JdbcFileRecordRepository implements FileRecordRepository {
         record.setLastModifiedAt(lastModified == null ? null : lastModified.toInstant());
         return record;
     }
+
+	@Override
+	public void changeParentFolder(long fileRecordId, long newParentFolderId) {
+        String sql = "UPDATE file_record SET parent_folder_id = ? "
+                + "WHERE id = ?";
+       try (Connection conn = connectionManager.openConnection()) {
+           PreparedStatement ps = conn.prepareStatement(sql);
+           ps.setLong(1, newParentFolderId);
+           ps.setLong(2, fileRecordId);
+           ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to change parent folder for FileRecord: " + fileRecordId, e);
+        }
+	}
+	
 }

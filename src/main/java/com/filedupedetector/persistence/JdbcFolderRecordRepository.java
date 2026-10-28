@@ -163,15 +163,14 @@ public final class JdbcFolderRecordRepository implements FolderRecordRepository 
     public FolderRecord upsert(FolderRecord record) {
         try (Connection conn = connectionManager.openConnection()) {
             if (record.getId() > 0) {
-                // nothing to update for a folder
 //        		// Update existing record
-//        		String updateSql = "UPDATE folder_record SET name = ?, parent_folder_id = ? WHERE id = ?";
-//        		try (PreparedStatement ps = conn.prepareStatement(updateSql)) {
-//        			ps.setString(1, record.getName());
-//        			ps.setLong(2, record.getParentFolderId());
-//        			ps.setLong(3, record.getId());
-//        			ps.executeUpdate();
-//        		}
+        		String updateSql = "UPDATE folder_record SET name = ?, parent_folder_id = ? WHERE id = ?";
+        		try (PreparedStatement ps = conn.prepareStatement(updateSql)) {
+        			ps.setString(1, record.getName());
+        			ps.setObject(2, record.getParentFolderId(), java.sql.Types.BIGINT);  // allow null for parent_folder_id
+        			ps.setLong(3, record.getId());
+        			ps.executeUpdate();
+        		}
             } else {
                 // Insert new record
                 String insertSql = "INSERT INTO folder_record (name, parent_folder_id) VALUES (?, ?)";
@@ -202,4 +201,18 @@ public final class JdbcFolderRecordRepository implements FolderRecordRepository 
         return record;
     }
 
+	@Override
+	public void changeParentFolder(long folderId, long newParentFolderId) {
+        String sql = "UPDATE folder_record SET parent_folder_id = ? "
+                + "WHERE id = ?";
+       try (Connection conn = connectionManager.openConnection()) {
+           PreparedStatement ps = conn.prepareStatement(sql);
+           ps.setLong(1, newParentFolderId);
+           ps.setLong(2, folderId);
+           ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to change parent folder for FileRecord: " + folderId, e);
+        }
+	}
+	
 }

@@ -21,5 +21,7 @@ public interface FolderRecordRepository {
     void deleteByID(List<Long> idsToDelete);
     
     void deleteByID(Long idToDelete);
+
+	void changeParentFolder(long folderId, long newParentFolderId);
     
 }

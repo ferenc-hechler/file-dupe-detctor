@@ -59,6 +59,9 @@ public class DBManager {
     }
 	
     public void recursiveDeleteFolder(Long folderId) {
+    	if (folderId == null) {
+    		return;
+    	}
         List<Long> fileIDsToDelete = getFileRecordRepository().findIDsByParentFolder(folderId);
         getFileRecordRepository().deleteByID(fileIDsToDelete);
         List<Long> folderIDsToDelete = getFolderRecordRepository().findIDsByParentFolder(folderId);
