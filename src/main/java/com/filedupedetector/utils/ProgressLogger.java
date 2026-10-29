@@ -4,11 +4,11 @@ import java.util.Locale;
 
 public class ProgressLogger<T> {
 
-	static interface LogCallback {
+	public static interface LogCallback {
 		String progressMessage();
 	}
 	
-	static interface ParamLogCallback<T> {
+	public static interface ParamLogCallback<T> {
 		String progressMessage(T param);
 	}
 	

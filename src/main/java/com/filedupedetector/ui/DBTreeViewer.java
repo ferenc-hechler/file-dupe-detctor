@@ -46,6 +46,7 @@ import com.filedupedetector.persistence.DBManager;
 import com.filedupedetector.persistence.SimpleDBFileWalker;
 import com.filedupedetector.persistence.SimpleDBFileWalker.SimpleDBFileVisitor;
 import com.filedupedetector.utils.AppUtils;
+import com.filedupedetector.utils.ProgressLogger;
 
 /**
  * Swing viewer showing scan locations, folders and files in a lazily loaded
@@ -530,9 +531,14 @@ public class DBTreeViewer extends JFrame {
 	
 	private String filterString = "*.*";
 	private Pattern filterPattern = null;
-	private Set<Long> visibleFolders = new HashSet<>();
-	private Set<Long> emptyFolders = new HashSet<>();
 	
+	private boolean checkFilter(String lowercaseFileName) {
+		if (filterPattern == null) {
+			return true;
+		}
+		return filterPattern.matcher(lowercaseFileName).matches();
+	}
+
 	private boolean checkFilter(FileRecord fileRecord) {
 		if (filterPattern == null) {
 			return true;
@@ -540,11 +546,177 @@ public class DBTreeViewer extends JFrame {
 		return filterPattern.matcher(fileRecord.getName().toLowerCase()).matches();
 	}
 
+	private boolean checkFilter(FolderRecord folderRecord) {
+		if (filterPattern == null) {
+			return true;
+		}
+		MemFolder mf = memFolderMap.get(folderRecord.getId());
+		return (mf == null) || mf.isVisible();
+	}
+
+	
+	class MemFolder {
+		private long folderId;
+		private boolean visible;
+		private List<MemFolder> childFolders;
+		private List<String> files;
+		public MemFolder(long folderId) {
+			this.folderId = folderId;
+			this.visible = false;
+			this.childFolders = new ArrayList<>();
+			this.files = new ArrayList<>();
+		}
+		public void addFile(String fileName) {
+			files.add(fileName.toLowerCase());
+		}
+		public void addChildFolder(MemFolder child) {
+			childFolders.add(child);
+		}
+		public void setVisible(boolean value) {
+			visible = value;
+		}
+		public boolean isVisible() {
+			return visible;
+		}
+		public boolean updateVisibility() {
+			visible = false;
+			for (MemFolder child : childFolders) {
+				if (child.updateVisibility()) {
+					visible = true;
+				}
+			}
+			if (!visible) {
+				for (String file : files) {
+					if (checkFilter(file)) {
+						visible = true;
+						break;
+					}
+				}
+			}
+			return visible;
+		}
+	}
+	
+	Map<Long, MemFolder> memFolderMap = new HashMap<>();
+	MemFolder memRootFolder = null;
+
+
+	private void updateMemFolderVisibility() {
+		if (memRootFolder == null) {
+			readMemFoldersFromDB();
+		}
+		else {
+			memRootFolder.updateVisibility();
+		}
+	}
+	
+	private void readMemFoldersFromDB() {
+		memFolderMap = new HashMap<>();
+		memRootFolder = new MemFolder(-1);
+		memFolderMap.put(null, memRootFolder);
+		memFolderMap.put(-1L, memRootFolder);
+		if (filterPattern == null) {
+			return;
+		}
+		ProgressLogger<FileRecord> progressLogger = new ProgressLogger<>();
+		DBFileWalker<CountResults> walker = new DBFileWalker<>(dbMgr);
+		CountResults result = walker.walk(new DBFileVisitor<>() {
+			@Override
+			public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {
+				MemFolder mf = new MemFolder(folderRecord.getId());
+				memFolderMap.put(mf.folderId, mf);
+				memFolderMap.get(folderRecord.getParentFolderId()).addChildFolder(mf);
+			}
+
+			@Override
+			public CountResults visitFolder(ScanLocation location, FolderRecord folderRecord, Path path,
+					List<CountResults> childVisits) {
+				CountResults result = CountResults.count(childVisits);
+				if (folderRecord != null) {
+					result = result.add(CountResults.count(folderRecord));
+					if (result.fileCount() > 0) {
+						memFolderMap.get(folderRecord.getId()).setVisible(true);
+					}
+					else {
+						memFolderMap.get(folderRecord.getId()).setVisible(false);
+					}
+				}
+				return result;
+			}
+
+			@Override
+			public CountResults visitFile(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord,
+					Path path) {
+				progressLogger.progress(()->AppUtils.normFilename(path));
+				memFolderMap.get(folderRecord.getId()).addFile(fileRecord.getName());
+				CountResults result;
+				if (checkFilter(fileRecord)) {
+					result = CountResults.count(fileRecord);
+				}
+				else {
+					result = new CountResults(0, 0, 0);
+				}
+				return result;
+			}
+		});
+		progressLogger.finished(()->"Filter: " + filterString + ", counts: " + result);
+	}
+
+
+//	private void collectVisibleFolders() {
+//		visibleFolders.clear();
+//		emptyFolders.clear();
+//		if (filterPattern == null) {
+//			return;
+//		}
+//		ProgressLogger<FileRecord> progressLogger = new ProgressLogger<>();
+//		DBFileWalker<CountResults> walker = new DBFileWalker<>(dbMgr);
+//		CountResults result = walker.walk(new DBFileVisitor<>() {
+//			@Override
+//			public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {}
+//
+//			@Override
+//			public CountResults visitFolder(ScanLocation location, FolderRecord folderRecord, Path path,
+//					List<CountResults> childVisits) {
+//				CountResults result = CountResults.count(childVisits);
+//				if (location != null) {
+//					result = result.add(CountResults.count(folderRecord));
+//					if (result.fileCount() > 0) {
+//						visibleFolders.add(folderRecord.getId());
+//					}
+//					else {
+//						emptyFolders.add(folderRecord.getId());
+//					}
+//				}
+//				return result;
+//			}
+//
+//			@Override
+//			public CountResults visitFile(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord,
+//					Path path) {
+//				progressLogger.progress(()->AppUtils.normFilename(path));
+//				CountResults result;
+//				if (checkFilter(fileRecord)) {
+//					result = CountResults.count(fileRecord);
+//				}
+//				else {
+//					result = new CountResults(0, 0, 0);
+//				}
+//				return result;
+//			}
+//		});
+//		progressLogger.finished(()->"Filter: " + filterString + ", visible folders: " + visibleFolders.size() + ", empty folders: "
+//				+ emptyFolders.size() + ", total counts: " + result);
+//	}
+
+
 
 	private void onFilter() {
 		String newFilterString = promptForInput("Enter Filter:", filterString);
 		filterPattern = compileFilterPattern(newFilterString);
 		filterString = newFilterString;
+//		collectVisibleFolders();
+		updateMemFolderVisibility();
 
 		treeModel.setRoot(new DefaultMutableTreeNode("Scan Locations"));
 		dbMgr.getScanLocationRepository().findAll().forEach(loc -> ((DefaultMutableTreeNode) treeModel.getRoot())
@@ -787,8 +959,11 @@ public class DBTreeViewer extends JFrame {
 		}
 		if (folderId != null) {
 			final long id = folderId;
-			dbMgr.getFolderRecordRepository().findByParentFolder(id)
-					.forEach(f -> node.add(createLazyNode(f, f.disp(""), true)));
+			for (FolderRecord folder : dbMgr.getFolderRecordRepository().findByParentFolder(id)) {
+				if (checkFilter(folder)) {
+					node.add(createLazyNode(folder, folder.disp(""), true));
+				}
+			}
 			for (FileRecord file : dbMgr.getFileRecordRepository().findByParentFolder(id)) {
 				if (checkFilter(file)) {
 					node.add(new DefaultMutableTreeNode(new NodeData(file, file.disp("")), false));
