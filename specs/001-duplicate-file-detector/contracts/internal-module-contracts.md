@@ -23,7 +23,7 @@ public interface FileVisitCallback {
 }
 
 public interface HashService {
-    /** Computes a SHA-256 hex digest by streaming file content; never loads whole file into memory. */
+    /** Computes a SHA-1 hex digest by streaming file content; never loads whole file into memory. */
     String computeHash(Path absolutePath) throws IOException;
 }
 ```
@@ -62,7 +62,7 @@ public interface ScanService {
     /**
      * Runs (or re-runs) a scan over the given scan locations.
      * MUST run off the Swing EDT; progress/completion delivered via the listener.
-     * Applies size-first pre-filter + SHA-256 hashing, reusing persisted hashes
+     * Applies size-first pre-filter + SHA-1 hashing, reusing persisted hashes
      * for files whose size/lastModified are unchanged since the last scan (FR-006/FR-007).
      */
     void scanAsync(List<ScanLocation> locations, ScanProgressListener listener);

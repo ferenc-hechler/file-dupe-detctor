@@ -1,8 +1,12 @@
 package com.filedupedetector.pcloud;
 
+import java.io.IOException;
+
 import com.pcloud.sdk.ApiClient;
+import com.pcloud.sdk.ApiError;
 import com.pcloud.sdk.Authenticators;
 import com.pcloud.sdk.PCloudSdk;
+import com.pcloud.sdk.UserInfo;
 
 /**
  * 
@@ -30,6 +34,10 @@ public class PCloudApiClient {
 		}
 		return internApiClient;
 	}
+	public static synchronized ApiClient getApiClient(String configFilename) {
+		PCloudApiClient.setConfigFilename(configFilename);
+		return getApiClient();
+	}
 	public static synchronized void shutdownApiClient() {
 		if (internApiClient == null) {
 			return;
@@ -46,4 +54,21 @@ public class PCloudApiClient {
 		PCloudConfig.setConfigFilename(configFilename);
 	}
 	
+	public static String getPCloudEnv() {
+		return getConfig().getPCloudEnv();
+	}
+
+	public static UserInfo getUserInfo() {
+		
+		try {
+			UserInfo userInfo = getApiClient().getUserInfo().execute();
+			return userInfo;
+		} catch (IOException | ApiError e) {
+			throw new RuntimeException("error getting user info", e);
+		}
+	}
+	public static String getAPIHost() {
+		return getConfig().getApiHost();
+	}
+
 }

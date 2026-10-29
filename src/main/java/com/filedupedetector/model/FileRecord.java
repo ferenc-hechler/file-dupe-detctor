@@ -1,141 +1,123 @@
 package com.filedupedetector.model;
 
+import java.awt.Color;
 import java.time.Instant;
 import java.util.Objects;
+import static com.filedupedetector.utils.AppUtils.*;
 
 /**
  * Persisted information about a single scanned file (FR-005).
  */
 public final class FileRecord {
 
-    public enum FileStatus {
-        /** Seen and readable in the most recent scan. */
-        PRESENT,
-        /** Previously seen, not found in the latest scan of its location. */
-        MISSING,
-        /** Found but could not be read/hashed (permission/lock/placeholder). */
-        ERRORED
-    }
+	private long id;
+	private String name;
+	private long parentFolderId;
+	private long sizeBytes;
+	private String sha1hash;
+	private Instant lastModifiedAt;
 
-    private long id;
-    private long scanLocationId;
-    private String relativePath;
-    private long sizeBytes;
-    private String contentHash; // nullable
-    private Instant lastModifiedAt;
-    private FileStatus status;
-    private Long lastScanSessionId; // nullable
-    private Instant lastSeenAt;
+	public FileRecord() {
+	}
 
-    public FileRecord() {
-    }
+	public FileRecord(long id, long parentFolderId, String name, long sizeBytes, String sha1hash,
+			Instant lastModifiedAt, Instant lastSeenAt) {
+		this.id = id;
+		this.parentFolderId = parentFolderId;
+		this.name = Objects.requireNonNull(name, "name must not be null");
+		this.sizeBytes = sizeBytes;
+		this.sha1hash = sha1hash;
+		this.lastModifiedAt = lastModifiedAt;
+	}
 
-    public FileRecord(long id, long scanLocationId, String relativePath, long sizeBytes,
-                       String contentHash, Instant lastModifiedAt, FileStatus status,
-                       Long lastScanSessionId, Instant lastSeenAt) {
-        this.id = id;
-        this.scanLocationId = scanLocationId;
-        this.relativePath = Objects.requireNonNull(relativePath, "relativePath must not be null");
-        this.sizeBytes = sizeBytes;
-        this.contentHash = contentHash;
-        this.lastModifiedAt = lastModifiedAt;
-        this.status = Objects.requireNonNull(status, "status must not be null");
-        this.lastScanSessionId = lastScanSessionId;
-        this.lastSeenAt = lastSeenAt;
-    }
+	public long getId() {
+		return id;
+	}
 
-    public long getId() {
-        return id;
-    }
+	public void setId(long id) {
+		this.id = id;
+	}
 
-    public void setId(long id) {
-        this.id = id;
-    }
+	public String getName() {
+		return name;
+	}
 
-    public long getScanLocationId() {
-        return scanLocationId;
-    }
+	public void setName(String name) {
+		this.name = name;
+	}
 
-    public void setScanLocationId(long scanLocationId) {
-        this.scanLocationId = scanLocationId;
-    }
+	public long getParentFolderId() {
+		return parentFolderId;
+	}
 
-    public String getRelativePath() {
-        return relativePath;
-    }
+	public void setParentFolderId(long parentFolderId) {
+		this.parentFolderId = parentFolderId;
+	}
 
-    public void setRelativePath(String relativePath) {
-        this.relativePath = relativePath;
-    }
+	public long getSizeBytes() {
+		return sizeBytes;
+	}
 
-    public long getSizeBytes() {
-        return sizeBytes;
-    }
+	public void setSizeBytes(long sizeBytes) {
+		this.sizeBytes = sizeBytes;
+	}
 
-    public void setSizeBytes(long sizeBytes) {
-        this.sizeBytes = sizeBytes;
-    }
+	public String getSha1hash() {
+		return sha1hash;
+	}
 
-    public String getContentHash() {
-        return contentHash;
-    }
+	public void setSha1hash(String sha1hash) {
+		this.sha1hash = sha1hash;
+	}
 
-    public void setContentHash(String contentHash) {
-        this.contentHash = contentHash;
-    }
+	public Instant getLastModifiedAt() {
+		return lastModifiedAt;
+	}
 
-    public Instant getLastModifiedAt() {
-        return lastModifiedAt;
-    }
+	public void setLastModifiedAt(Instant lastModifiedAt) {
+		this.lastModifiedAt = lastModifiedAt;
+	}
 
-    public void setLastModifiedAt(Instant lastModifiedAt) {
-        this.lastModifiedAt = lastModifiedAt;
-    }
+	@Override
+	public boolean equals(Object o) {
+		if (this == o)
+			return true;
+		if (!(o instanceof FileRecord that))
+			return false;
+		return id == that.id;
+	}
 
-    public FileStatus getStatus() {
-        return status;
-    }
+	@Override
+	public int hashCode() {
+		return Objects.hash(id);
+	}
 
-    public void setStatus(FileStatus status) {
-        this.status = status;
-    }
+	@Override
+	public String toString() {
+		return "FileRecord{id=%d, parentFolderId=%d, name='%s', sizeBytes=%d}".formatted(id, parentFolderId, name,
+				sizeBytes);
+	}
 
-    public Long getLastScanSessionId() {
-        return lastScanSessionId;
-    }
 
-    public void setLastScanSessionId(Long lastScanSessionId) {
-        this.lastScanSessionId = lastScanSessionId;
-    }
+	public String disp() {
+		return disp("", 60);
+	}
+	public String disp(String indent) {
+		return disp(indent, 60);
+	}
+	public String disp(String indent, int nameWidth) {
+		return "%s %s  %s  %s".formatted(padr(indent+name,nameWidth), padl(readable(sizeBytes),10), readable(lastModifiedAt), readable(sha1hash));
+	}
+	
 
-    public Instant getLastSeenAt() {
-        return lastSeenAt;
-    }
-
-    public void setLastSeenAt(Instant lastSeenAt) {
-        this.lastSeenAt = lastSeenAt;
-    }
-
-    /** Whether this record is currently eligible for duplicate matching (FR-003, FR-012). */
-    public boolean isEligibleForDuplicateMatching() {
-        return status == FileStatus.PRESENT && contentHash != null;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof FileRecord that)) return false;
-        return id == that.id;
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(id);
-    }
-
-    @Override
-    public String toString() {
-        return "FileRecord{id=%d, scanLocationId=%d, relativePath='%s', sizeBytes=%d, status=%s}"
-                .formatted(id, scanLocationId, relativePath, sizeBytes, status);
-    }
+	public Color getColor() {
+		if (name.toLowerCase().startsWith("f")) {
+			return Color.GREEN;
+		}
+		if (name.toLowerCase().startsWith("p")) {
+			return Color.RED;
+		}
+		return null;
+	}
+	
 }

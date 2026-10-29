@@ -41,9 +41,9 @@ This document resolves all technology choices needed before Phase 1 design. No `
 
 ## 4. Hashing Strategy
 
-**Decision**: Two-stage comparison — (1) group candidate files by exact file size first (cheap, from file metadata, no I/O beyond a directory listing), then (2) compute a cryptographic hash (SHA-256 via `java.security.MessageDigest`) only for files that share a size with at least one other file, streaming the file content in fixed-size buffered chunks rather than loading whole files into memory.
+**Decision**: Two-stage comparison — (1) group candidate files by exact file size first (cheap, from file metadata, no I/O beyond a directory listing), then (2) compute a cryptographic hash (SHA-1 via `java.security.MessageDigest`) only for files that share a size with at least one other file, streaming the file content in fixed-size buffered chunks rather than loading whole files into memory.
 
-**Rationale**: Matches FR-002/FR-003 exactly ("size AND content hash both match") and avoids wastefully hashing every file when most files have a unique size (classic duplicate-finder optimization, directly supports SC-002's re-scan performance target when combined with persistence reuse). SHA-256 is a cryptographically strong, collision-resistant hash available in the JDK standard library with no extra dependency, satisfying the Assumptions section's "collisions considered negligible in practice."
+**Rationale**: Matches FR-002/FR-003 exactly ("size AND content hash both match") and avoids wastefully hashing every file when most files have a unique size (classic duplicate-finder optimization, directly supports SC-002's re-scan performance target when combined with persistence reuse). SHA-1 is a cryptographically strong, collision-resistant hash available in the JDK standard library with no extra dependency, satisfying the Assumptions section's "collisions considered negligible in practice."
 
 **Alternatives considered**:
 - *MD5/CRC32*: Faster but weaker/collision-prone (CRC32 especially); rejected given the spec's explicit assumption of a "cryptographically strong, collision-resistant hash algorithm."
@@ -84,7 +84,7 @@ This document resolves all technology choices needed before Phase 1 design. No `
 | Language/Build | Java 17 + Maven |
 | GUI | Swing `JTree` + custom `TreeModel`/`TreeCellRenderer`, `SwingWorker` for background work |
 | Persistence | Embedded H2 (file-based, JDBC, hand-written repository layer) |
-| Hashing | SHA-256, size-first two-stage comparison, streamed/buffered I/O |
+| Hashing | SHA-1, size-first two-stage comparison, streamed/buffered I/O |
 | Change detection | `(size, lastModifiedTime)` comparison against persisted File Record |
 | File walking | `java.nio.file.Files.walkFileTree`, per-file error isolation |
 | Testing | JUnit 5, logic extracted from Swing classes for headless testability |

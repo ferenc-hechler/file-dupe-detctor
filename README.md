@@ -2,7 +2,7 @@
 
 A Java desktop application that detects duplicate files across local drives, removable volumes,
 and cloud-storage folders (as mounted/synced to the local file system). Duplicates are identified
-by comparing file size first, then a SHA-256 content hash. Scan results are persisted in a local
+by comparing file size first, then a SHA-1 content hash. Scan results are persisted in a local
 embedded database so re-scans don't need to recompute hashes for unchanged files. A Swing GUI
 visualizes scanned locations and duplicates in a tree view.
 

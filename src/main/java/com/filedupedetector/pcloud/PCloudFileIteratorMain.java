@@ -2,7 +2,6 @@ package com.filedupedetector.pcloud;
 
 
 import java.io.IOException;
-import java.util.Map;
 
 import com.pcloud.sdk.ApiClient;
 import com.pcloud.sdk.ApiError;

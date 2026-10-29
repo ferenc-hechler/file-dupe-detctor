@@ -24,6 +24,7 @@ public class PCloudConfig {
 		DEFAULT_PCLOUD_CONFIG_FILENAME = configFilename;
 	}
 
+	private String pcloudEnv;
 	private String clientId;
 	private String encClientSecret;
 	private String encAccessToken;
@@ -32,7 +33,6 @@ public class PCloudConfig {
 
 	public PCloudConfig() {
 		this(System.getenv("PCLOUD_CONFIG_FILENAME"));
-		
 	}
 
 	public PCloudConfig(String propertiesFile) {
@@ -48,24 +48,29 @@ public class PCloudConfig {
 			clientId = envProps.getProperty("CLIENT_ID").trim();
 			encClientSecret = envProps.getProperty("ENC_CLIENT_SECRET");
 			if (encClientSecret == null) {
-				encClientSecret = SimpleCrypto.encrypt(APP_NAME + 13, envProps.getProperty("CLIENT_SECRET").trim());
+				encClientSecret = SimpleCrypto.encrypt(APP_NAME + 42, envProps.getProperty("CLIENT_SECRET").trim());
 				System.out.println("ENC_CLIENT_SECRET=" + encClientSecret);
 				System.out.println("--> replace CLIENT_SECRET=... with the above line in "+propertiesFile);
 				System.exit(2);
 			}
 			encAccessToken = envProps.getProperty("ENC_ACCESS_TOKEN");
 			if (encAccessToken == null) {
-				encAccessToken = SimpleCrypto.encrypt(APP_NAME + 13, envProps.getProperty("ACCESS_TOKEN").trim());
+				encAccessToken = SimpleCrypto.encrypt(APP_NAME + 42, envProps.getProperty("ACCESS_TOKEN").trim());
 				System.out.println("ENC_ACCESS_TOKEN=" + encAccessToken);
 				System.out.println("--> replace ACCESS_TOKEN=... with the above line in "+propertiesFile);
 				System.exit(2);
 			}
 			apiHost = envProps.getProperty("API_HOST").trim();
+			pcloudEnv = envProps.getProperty("PCLOUD_ENV", "").trim();
 		} catch (Exception e) {
 			throw new RuntimeException("error reding config file '" + propertiesFile + "'", e);
 		}
 	}
 
+	public String getPCloudEnv() {
+		return pcloudEnv;
+	}
+	
 	public String getClientId() {
 		return clientId;
 	}

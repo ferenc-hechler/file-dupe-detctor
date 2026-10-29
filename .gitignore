@@ -40,3 +40,7 @@ target/
 *.mv.db
 *.trace.db
 *.lock.db
+
+# output folder
+/output/
+/input/
