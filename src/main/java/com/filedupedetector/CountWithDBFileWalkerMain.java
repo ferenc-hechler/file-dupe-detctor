@@ -28,6 +28,11 @@ public final class CountWithDBFileWalkerMain {
 				System.out.println("Location: " + location.disp() + " - " + result);
 			}
             else {
+//            	if (path.getNameCount() == 2) {
+//            		if (path.toString().startsWith("D:\\99")) {
+//        				System.out.println("  Path: " + path + " - " + result);
+//					}
+//            	}
                 result = result.add(CountResults.count(folderRecord));
             }
             return result;

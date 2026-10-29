@@ -126,7 +126,8 @@ public class DBTreeViewer extends JFrame {
 
 		JButton joinButton = new JButton("Join");
 		joinButton.addActionListener(e -> {
-			onQuickJoin();
+//			onQuickJoin();
+			onJoin();
 		});
 
 		JButton renameButton = new JButton("Rename");
