@@ -135,10 +135,16 @@ public class DBTreeViewer extends JFrame {
 			onRename();
 		});
 
+		JButton filterButton = new JButton("Filter");
+		filterButton.addActionListener(e -> {
+			onFilter();
+		});
+
 		JButton deleteButton = new JButton("Delete");
 		deleteButton.addActionListener(e -> {
 			onDelete();
 		});
+
 
 		dbMgr.getScanLocationRepository().findAll().forEach(loc -> root.add(createLazyNode(loc, loc.disp(), loc.hasRootFolderId())));
 		// children were added after the tree was created -> notify the model
@@ -161,6 +167,7 @@ public class DBTreeViewer extends JFrame {
 		top.add(markButton);
 		top.add(joinButton);
 		top.add(renameButton);
+		top.add(filterButton);
 		top.add(deleteButton);
 		add(top, BorderLayout.NORTH);
 		add(new JScrollPane(tree), BorderLayout.CENTER);
@@ -504,6 +511,41 @@ public class DBTreeViewer extends JFrame {
 		tree.repaint();
 	}
 
+
+
+	private void onFilter() {
+		try {
+			List<ScanLocation> selected = getCheckedScanLocations();
+			LOG.info("Selected ScanLocations ({}):", selected.size());
+			selected.forEach(loc -> LOG.info("  {}", loc.disp()));
+			if (selected.size() != 1) {
+				LOG.warn("exactly one ScanLocations must be selected for renaming.");
+				return;
+			}
+			DefaultMutableTreeNode root = (DefaultMutableTreeNode) treeModel.getRoot();
+			ScanLocation location = selected.get(0);
+			String newName = promptForInput("Enter new name for ScanLocation:", location.getDisplayName());
+			if (newName == null || newName.trim().isEmpty()) {
+				LOG.warn("Rename cancelled or empty name provided.");
+				return;
+			}
+			location.setDisplayName(newName.trim());
+			dbMgr.getScanLocationRepository().rename(location.getId(), newName.trim());
+			for (int i = 0; i < root.getChildCount(); i++) {
+				DefaultMutableTreeNode n = (DefaultMutableTreeNode) root.getChildAt(i);
+				if (n.getUserObject() instanceof NodeData d && d.object() instanceof ScanLocation l
+						&& l.getId() == location.getId()) {
+					n.setUserObject(new NodeData(location, location.disp()));
+					treeModel.nodeChanged(n);
+				}
+			}
+			LOG.info("Rename ScanLocation finished.");
+		}
+		catch (IllegalStateException ex) {
+			LOG.error("Error deleting ScanLocations: " + ex.getMessage());
+		}
+		tree.repaint();
+	}
 
 
 

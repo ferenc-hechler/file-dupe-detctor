@@ -18,8 +18,10 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- 
 		<main.class>com.filedupedetector.ScanWithPCloudFolderWalkerMain</main.class> 
-        -->
         <main.class>com.filedupedetector.LegacyJSONImporter</main.class>
+        -->
+        <main.class>com.filedupedetector.ui.DBTreeViewer</main.class>
+        
 
         <h2.version>2.5.252</h2.version>
         <pcloud.version>1.11.0</pcloud.version>

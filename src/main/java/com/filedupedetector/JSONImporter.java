@@ -245,7 +245,7 @@ public class JSONImporter {
 //		importer.importFile("output/db-export_PCLOUD_BEWERBUNG.json");
 //		importer.importFile("output/db-export_PCLOUD_EBOOK-BEWERBUNG.json");
 //		importer.importFile("output/db-export-PCLOUD.json");
-		importer.importFile("output/db-export-TEST.json");
+		importer.importFile("output/db-filter-export.json");
 	}
 
 }

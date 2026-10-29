@@ -9,10 +9,13 @@ import com.filedupedetector.model.FolderRecord;
 import com.filedupedetector.model.ScanLocation;
 import com.filedupedetector.persistence.DBFileWalker;
 import com.filedupedetector.persistence.DBFileWalker.DBFileVisitor;
+import com.filedupedetector.utils.ProgressLogger;
 
 public final class CountWithDBFileWalkerMain {
 
     class ShowDBFileVisitor implements DBFileVisitor<CountResults> {
+    	
+    	ProgressLogger<FileRecord> progressLogger = new ProgressLogger<>();
 
         @Override
         public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {

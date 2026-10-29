@@ -296,11 +296,11 @@ public final class ScanWithPCloudFolderWalkerMain {
         
         scanApp.dbMgr.showDBFiles(1);
         
-//        String folder = "/DEV";
+        String folder = "/DEV";
 //        String folder = "/EBOOKS";
 //        String folder = "/BEWERBUNG";
 //        String folder = "/My Pictures/2006";
-        String folder = "/My Pictures/2018";
+//        String folder = "/My Pictures/2018";
         
         if (args.length > 0) {
 			folder = args[0];
