@@ -237,7 +237,7 @@ public class DBTreeViewer extends JFrame {
 		setLocationRelativeTo(null);
 	}
 
-	private static final int[] COLUMN_WIDTHS = { 70, 80, 70 };
+	private static final int[] COLUMN_WIDTHS = { 80, 80, 80 };
 
 	/** Creates the right-aligned columns (size, last modified, SHA1). */
 	private static JPanel createColumns(String size, String modified, String sha1, Color fg, Color bg) {
@@ -248,7 +248,7 @@ public class DBTreeViewer extends JFrame {
 		}
 		String[] texts = { size, modified, sha1 };
 		for (int i = 0; i < texts.length; i++) {
-			JLabel l = new JLabel(texts[i], i == 0 ? SwingConstants.RIGHT : SwingConstants.LEFT);
+			JLabel l = new JLabel(texts[i], i < 2 ? SwingConstants.RIGHT : SwingConstants.LEFT);
 			l.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
 			l.setPreferredSize(new Dimension(COLUMN_WIDTHS[i], l.getPreferredSize().height));
 			if (fg != null) {
@@ -623,59 +623,6 @@ public class DBTreeViewer extends JFrame {
 		}
 	}
 	
-	public static class MemFolderOLD {
-		private static ProgressLogger PL;
-		private static Predicate<String> filter;
-		
-		private long folderId;
-		private List<MemFolder> childFolders;
-		private List<String> files;
-		
-		private transient long countChildFiles;
-//		private transient long countChildBytes;
-		
-		public MemFolderOLD(long folderId) {
-			this.folderId = folderId;
-			this.childFolders = new ArrayList<>();
-			this.files = new ArrayList<>();
-			this.countChildFiles = 0;
-//			this.countChildBytes = 0;
-		}
-		public void addFile(String fileName) {
-			files.add(fileName.toLowerCase());
-		}
-		public void addChildFolder(MemFolder child) {
-			childFolders.add(child);
-		}
-		public boolean isVisible() {
-			return countChildFiles > 0L;
-		}
-		public long countFiles() {
-			countChildFiles = 0;
-			for (MemFolder child : childFolders) {
-				countChildFiles += child.countFiles();
-			}
-			for (String file : files) {
-				PL.progress(()->"Checking file: " + file);
-				if (filter.test(file)) {
-					countChildFiles++;
-				}
-			}
-			return countChildFiles;
-		}
-
-		public long startCountFiles(String filterText, Predicate<String> currentFilter) {
-			filter = currentFilter;
-			PL = new ProgressLogger();
-			countFiles();
-			PL.finished(()->"countFiles("+filterText+") finished");
-			return countChildFiles;
-		}
-		public void setCountChildFiles(int fileCount) {
-			this.countChildFiles = fileCount;
-		}
-
-	}
 
 	public static class MemFolder {
 		private static ProgressLogger PL;
@@ -686,14 +633,14 @@ public class DBTreeViewer extends JFrame {
 		private List<MemFile> files;
 		
 		private transient long countChildFiles;
-//		private transient long countChildBytes;
+		private transient long countChildBytes;
 		
 		public MemFolder(long folderId) {
 			this.folderId = folderId;
 			this.childFolders = new ArrayList<>();
 			this.files = new ArrayList<>();
 			this.countChildFiles = 0;
-//			this.countChildBytes = 0;
+			this.countChildBytes = 0;
 		}
 		public void addFile(FileRecord fileRecord) {
 			files.add(MemFile.createFromFileRecord(fileRecord));
@@ -708,11 +655,13 @@ public class DBTreeViewer extends JFrame {
 			countChildFiles = 0;
 			for (MemFolder child : childFolders) {
 				countChildFiles += child.countFiles();
+				countChildBytes += child.countChildBytes;
 			}
 			for (MemFile mFil : files) {
 				PL.progress(()->"Checking file: " + mFil.fileName());
 				if (filter.test(mFil.fileName().toLowerCase())) {
 					countChildFiles++;
+					countChildBytes += mFil.sizeBytes();
 				}
 			}
 			return countChildFiles;
@@ -737,8 +686,8 @@ public class DBTreeViewer extends JFrame {
 		}
 	}
 
-	Map<Long, MemFolder> memFolderMap = new HashMap<>();
-	MemFolder memRootFolder = null;
+	static Map<Long, MemFolder> memFolderMap = new HashMap<>();
+	static MemFolder memRootFolder = null;
 
 
 	private void updateMemFolderVisibility() {
@@ -802,53 +751,6 @@ public class DBTreeViewer extends JFrame {
 		});
 		progressLogger.finished(()->"Filter: " + filterString + ", counts: " + result);
 	}
-
-
-//	private void collectVisibleFolders() {
-//		visibleFolders.clear();
-//		emptyFolders.clear();
-//		if (filterPattern == null) {
-//			return;
-//		}
-//		ProgressLogger<FileRecord> progressLogger = new ProgressLogger<>();
-//		DBFileWalker<CountResults> walker = new DBFileWalker<>(dbMgr);
-//		CountResults result = walker.walk(new DBFileVisitor<>() {
-//			@Override
-//			public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {}
-//
-//			@Override
-//			public CountResults visitFolder(ScanLocation location, FolderRecord folderRecord, Path path,
-//					List<CountResults> childVisits) {
-//				CountResults result = CountResults.count(childVisits);
-//				if (location != null) {
-//					result = result.add(CountResults.count(folderRecord));
-//					if (result.fileCount() > 0) {
-//						visibleFolders.add(folderRecord.getId());
-//					}
-//					else {
-//						emptyFolders.add(folderRecord.getId());
-//					}
-//				}
-//				return result;
-//			}
-//
-//			@Override
-//			public CountResults visitFile(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord,
-//					Path path) {
-//				progressLogger.progress(()->AppUtils.normFilename(path));
-//				CountResults result;
-//				if (checkFilter(fileRecord)) {
-//					result = CountResults.count(fileRecord);
-//				}
-//				else {
-//					result = new CountResults(0, 0, 0);
-//				}
-//				return result;
-//			}
-//		});
-//		progressLogger.finished(()->"Filter: " + filterString + ", visible folders: " + visibleFolders.size() + ", empty folders: "
-//				+ emptyFolders.size() + ", total counts: " + result);
-//	}
 
 
 
@@ -1101,12 +1003,7 @@ public class DBTreeViewer extends JFrame {
 			final long id = folderId;
 			for (FolderRecord folder : dbMgr.getFolderRecordRepository().findByParentFolder(id)) {
 				if (checkFilter(folder)) {
-					String label = folder.disp("");
-					MemFolder mf = memFolderMap.get(folder.getId());
-					if (mf != null) {
-						label = label + "   (" + mf.countChildFiles + ")";
-					}
-					node.add(createLazyNode(folder, label, true));
+					node.add(createLazyNode(folder, folder.getName(), true));
 				}
 			}
 			for (FileRecord file : dbMgr.getFileRecordRepository().findByParentFolder(id)) {
@@ -1131,11 +1028,29 @@ public class DBTreeViewer extends JFrame {
 		}
 
 		String sizeText() {
-			return object instanceof FileRecord f ? readable(f.getSizeBytes()) : "";
+			if (object instanceof FileRecord f) {
+				return readable(f.getSizeBytes());
+			}
+			if (object instanceof FolderRecord folder) {
+				MemFolder mf = memFolderMap.get(folder.getId());
+				if (mf != null) {
+					return readable(mf.countChildBytes);
+				}
+			}
+			return "";
 		}
 
 		String modifiedText() {
-			return object instanceof FileRecord f ? readable(f.getLastModifiedAt()) : "";
+			if (object instanceof FileRecord f) {
+				return readable(f.getLastModifiedAt());
+			}
+			if (object instanceof FolderRecord folder) {
+				MemFolder mf = memFolderMap.get(folder.getId());
+				if (mf != null) {
+					return "("+Long.toString(mf.countChildFiles)+")";
+				}
+			}
+			return "";
 		}
 
 		String sha1Text() {
