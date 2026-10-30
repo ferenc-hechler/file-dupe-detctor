@@ -240,12 +240,12 @@ public class JSONImporter {
 
 	public static void main(String[] args) {
 		JSONImporter importer = new JSONImporter();
-//		importer.importFile("output/db-export.json");
+		importer.importFile("output/db-export.json");
 //		importer.importFile("output/db-export_PCLOUD_EBOOKS.json");
 //		importer.importFile("output/db-export_PCLOUD_BEWERBUNG.json");
 //		importer.importFile("output/db-export_PCLOUD_EBOOK-BEWERBUNG.json");
 //		importer.importFile("output/db-export-PCLOUD.json");
-		importer.importFile("output/db-filter-export.json");
+//		importer.importFile("output/db-filter-export.json");
 	}
 
 }

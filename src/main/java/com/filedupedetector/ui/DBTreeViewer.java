@@ -268,9 +268,64 @@ public class DBTreeViewer extends JFrame {
 			}
 		});
 		add(scroll, BorderLayout.CENTER);
+
+		// info area (5 lines) showing details of the selected file
+		infoArea = new javax.swing.JTextArea(5, 40);
+		infoArea.setEditable(false);
+		add(new JScrollPane(infoArea), BorderLayout.SOUTH);
+		tree.addTreeSelectionListener(e -> updateInfoArea());
 		setDefaultCloseOperation(EXIT_ON_CLOSE);
 		setSize(900, 600);
 		setLocationRelativeTo(null);
+	}
+
+	private final javax.swing.JTextArea infoArea;
+
+	/** Shows the file name if exactly one file is selected, otherwise clears the text. */
+	private void updateInfoArea() {
+		TreePath[] paths = tree.getSelectionPaths();
+		String text = "";
+		if (paths != null && paths.length == 1
+				&& paths[0].getLastPathComponent() instanceof DefaultMutableTreeNode n
+				&& n.getUserObject() instanceof NodeData d && d.object() instanceof FileRecord f) {
+			List<Long> fileIds = duplicateSHAs.get(f.getSha1hash());
+			StringBuilder infoText = new StringBuilder();
+			if (fileIds == null || fileIds.isEmpty()) {
+				infoText.append("No duplicates found for this file.");
+			}
+			else {
+				infoText.append("Duplicates of this file:\n");
+				for (Long fileId : fileIds) {
+					if (fileId == f.getId()) {
+						continue;
+					}
+					String fullPath = getFullFilePath(fileId);
+					infoText.append(fullPath).append("\n");
+				}
+			}
+			text = infoText.toString();
+		}
+		
+		infoArea.setText(text);
+	}
+
+	private String getFullFilePath(Long fileId) {
+		FileRecord fileRecord = dbMgr.getFileRecordRepository().findById(fileId);
+		List<String> pathParts = new ArrayList<>();
+		pathParts.add(fileRecord.getName());
+		MemFolder mf = memFolderMap.get(fileRecord.getParentFolderId());
+		while (mf != null && mf != memRootFolder){
+			pathParts.add(mf.folderName);
+			mf = mf.parentFolder;
+		}
+		StringBuilder result = new StringBuilder();
+		for (int i = pathParts.size() - 1; i >= 0; i--) {
+			result.append(pathParts.get(i));
+			if (i > 0) {
+				result.append("/");
+			}
+		}
+		return result.toString();
 	}
 
 	private enum SortMode { NAME, SIZE_DESC, SIZE_ASC, LASTMOD_DESC, LASTMOD_ASC }
@@ -624,7 +679,7 @@ public class DBTreeViewer extends JFrame {
 		}
 		int childCount = in.readInt();
 		for (int i = 0; i < childCount; i++) {
-			folder.childFolders.add(readMemFolder(in, folderMap));
+			folder.addChildFolder(readMemFolder(in, folderMap));
 		}
 		return folder;
 	}
@@ -681,6 +736,7 @@ public class DBTreeViewer extends JFrame {
 		public List<MemFolder> childFolders;
 		public List<MemFile> files;
 		
+		public transient MemFolder parentFolder;
 		public transient long countChildFiles;
 		public transient long countChildBytes;
 		
@@ -693,10 +749,11 @@ public class DBTreeViewer extends JFrame {
 			this.countChildBytes = 0;
 		}
 		public void addFile(FileRecord fileRecord) {
-			files.add(MemFile.createFromFileRecord(fileRecord));
+			files.add(MemFile.createMemFile(fileRecord));
 		}
 		public void addChildFolder(MemFolder child) {
 			childFolders.add(child);
+			child.parentFolder = this;
 		}
 		public boolean isVisible() {
 			return countChildFiles > 0L;
@@ -734,8 +791,33 @@ public class DBTreeViewer extends JFrame {
 
 	}
 
+//	public static class MemFile {
+//		public long fileId;
+//		public String fileName;
+//		public long sizeBytes;
+//		public long lastModifiedAt;
+//		public String sha1hash;
+//		
+//		transient MemFolder parentFolder;
+//		
+//		public MemFile(FileRecord fileRecord) {
+//			this(fileRecord.getId(), fileRecord.getName(), fileRecord.getSizeBytes(), fileRecord.getLastModifiedAt().toEpochMilli(), fileRecord.getSha1hash());
+//		}
+//		public MemFile(long fileId, String fileName, long sizeBytes, long lastModifiedAt, String sha1hash) {
+//			this.fileId = fileId;
+//			this.fileName = fileName;
+//			this.sizeBytes = sizeBytes;
+//			this.lastModifiedAt = lastModifiedAt;
+//			this.sha1hash = sha1hash;
+//		}
+//		
+//		public void setParentFolder(MemFolder parent) {
+//			this.parentFolder = parent;
+//		}
+//	}
+
 	public record MemFile(long fileId, String fileName, long sizeBytes, long lastModifiedAt, String sha1hash) {
-		public static MemFile createFromFileRecord(FileRecord fileRecord) {
+		public static MemFile createMemFile(FileRecord fileRecord) {
 			return new MemFile(fileRecord.getId(), fileRecord.getName(), fileRecord.getSizeBytes(), fileRecord.getLastModifiedAt().toEpochMilli(), fileRecord.getSha1hash());
 		}
 	}
@@ -912,11 +994,13 @@ public class DBTreeViewer extends JFrame {
 
 	
 	static Map<String, Long> markedSHAs = new HashMap<>();
+	static Map<String, List<Long>> duplicateSHAs = new HashMap<>();
 	static Map<Long, Color> folderColors = new HashMap<>();
 	
-	static Color BROWN = new Color(200, 100, 0);
+	static Color BROWN = new Color(220, 110, 0);
 	
 	public DupsCount markDuplicateFolders() {
+		duplicateSHAs.clear();
 		folderColors.clear();
 		MemFileWalker<DupsCount> walker = new MemFileWalker<>(memRootFolder);
 		DupsCount result = walker.walk(new MemFileVisitor<>() {
@@ -944,6 +1028,13 @@ public class DBTreeViewer extends JFrame {
 			public DupsCount visitFile(MemFolder mf, MemFile mFil, Path path) {
 				Long dup = markedSHAs.get(mFil.sha1hash());
 				if (dup != null && dup != mFil.fileId()) {
+					List<Long> fileIDs = duplicateSHAs.get(mFil.sha1hash());
+					if (fileIDs == null) {
+						fileIDs = new ArrayList<>();
+						duplicateSHAs.put(mFil.sha1hash(), fileIDs);
+						fileIDs.add(dup);
+					}
+					fileIDs.add(mFil.fileId());
 					return new DupsCount(1, 0);
 				}
 				return new DupsCount(0, 1);

@@ -6,6 +6,8 @@ import com.filedupedetector.model.FileRecord;
 
 public interface FileRecordRepository {
 
+	FileRecord findById(long fileId);
+
     List<FileRecord> findByParentFolder(long parentFolderId);
     
     List<Long> findIDsByParentFolder(long parentFolderId);
