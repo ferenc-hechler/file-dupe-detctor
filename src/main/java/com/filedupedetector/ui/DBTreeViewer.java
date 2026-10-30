@@ -1,5 +1,9 @@
 package com.filedupedetector.ui;
 
+import static com.filedupedetector.utils.AppUtils.padl;
+import static com.filedupedetector.utils.AppUtils.padr;
+import static com.filedupedetector.utils.AppUtils.readable;
+
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -15,6 +19,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1042,7 +1047,12 @@ public class DBTreeViewer extends JFrame {
 			}
 			for (FileRecord file : dbMgr.getFileRecordRepository().findByParentFolder(id)) {
 				if (checkFilter(file)) {
-					node.add(new DefaultMutableTreeNode(new NodeData(file, file.disp("")), false));
+					String name = file.getName();
+					String sizeBytes = readable(file.getSizeBytes());
+					String lastModifiedAt = readable(file.getLastModifiedAt());
+					String sha1hash = readable(file.getSha1hash());
+					String label = "%s %s  %s  %s".formatted(padr(name,60), padl(sizeBytes,10), lastModifiedAt, sha1hash);
+					node.add(new DefaultMutableTreeNode(new NodeData(file, label), false));
 				}
 			}
 		}
