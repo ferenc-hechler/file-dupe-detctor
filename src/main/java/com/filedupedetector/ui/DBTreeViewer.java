@@ -135,7 +135,6 @@ public class DBTreeViewer extends JFrame {
 
 		JButton joinButton = new JButton("Join");
 		joinButton.addActionListener(e -> {
-//			onQuickJoin();
 			onJoin();
 		});
 
@@ -339,122 +338,6 @@ public class DBTreeViewer extends JFrame {
 		tree.repaint();
 	}
 
-	public class QuickFileCopyVisitor extends SimpleDBFileVisitor {
-
-		private FolderCreator folderCreator;
-
-		public QuickFileCopyVisitor(FolderCreator folderCreator) {
-			this.folderCreator = folderCreator;
-		}
-
-		@Override
-		public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {
-			if (folderRecord == null) {
-				return;
-			}
-			if (path.equals(folderCreator.getRootPath())) {
-				return;
-			}
-			FolderRecord parentFolder = folderCreator.getOrCreateFolder(path.getParent());
-			String folderName = folderRecord.getName();
-			if (folderName.indexOf('/') >= 0) {
-				folderName = folderName.substring(folderName.lastIndexOf('/') + 1);
-			}
-			FolderRecord existingFolderRecord = dbMgr.getFolderRecordRepository().findByParentFolderAndName(parentFolder.getId(), folderName);
-			if (existingFolderRecord == null) {
-				if (folderRecord.getName().indexOf('/') >= 0) {
-					location.setRootFolderId(null);
-					dbMgr.getScanLocationRepository().save(location);
-					folderRecord.setName(folderName);
-					dbMgr.getFolderRecordRepository().upsert(folderRecord);
-				}
-				dbMgr.getFolderRecordRepository().changeParentFolder(folderRecord.getId(), parentFolder.getId());
-			}
-		}
-
-		@Override
-		public void folderVisit(ScanLocation location, FolderRecord folderRecord, Path path) {}
-
-		@Override
-		public void fileVisit(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord, Path path) {
-			if (fileRecord != null) {
-				FolderRecord parentFolder = folderCreator.getOrCreateFolder(path.getParent());
-				if (!parentFolder.isNew()) {
-					FileRecord existing = dbMgr.getFileRecordRepository().findByParentFolderAndName(parentFolder.getId(), fileRecord.getName());
-					if (existing != null) {
-						// update existing file record only if the new one is newer (to avoid overwriting with older data)
-						if (fileRecord.getLastModifiedAt().isAfter(existing.getLastModifiedAt())) {
-							existing.setSizeBytes(fileRecord.getSizeBytes());
-							existing.setLastModifiedAt(fileRecord.getLastModifiedAt());
-							existing.setSha1hash(fileRecord.getSha1hash());
-							dbMgr.getFileRecordRepository().upsert(existing);
-						}
-						return;
-					}
-				}
-				// destructive move filerecord from old location to new location (parent folder) - this will remove the file from the old location and add it to the new one
-				dbMgr.getFileRecordRepository().changeParentFolder(fileRecord.getId(), parentFolder.getId());
-			}
-		}
-		
-	}
-
-
-	private void onQuickJoin() {
-		try {
-			List<ScanLocation> selected = getCheckedScanLocations();
-			LOG.info("Selected ScanLocations ({}):", selected.size());
-			selected.forEach(loc -> LOG.info("  {}", loc.disp()));
-			if (selected.size() < 2) {
-				LOG.warn("At least two ScanLocations must be selected for joining.");
-				return;
-			}
-			ScanLocation first = selected.get(0);
-			ScanLocation rootLocation = new ScanLocation();
-			rootLocation.setId(0L);
-			rootLocation.setDisplayName(first.getDisplayName());
-			rootLocation.setRootPath(first.getRootPath());
-			rootLocation.setVolName(first.getVolName());
-			rootLocation.setVolType(first.getVolType());
-			rootLocation.setVolSize(first.getVolSize());
-			rootLocation.setVolVSN(first.getVolVSN());
-			rootLocation.setType(first.getType());
-			rootLocation.setRootFolderId(null);
-			for (int i = 1; i < selected.size(); i++) {
-				ScanLocation other = selected.get(i);
-				verifyJoinable(rootLocation, other);
-			}
-			FolderRecord rootFolder;
-			final String rootPath = rootLocation.getRootPath();
-			Optional<ScanLocation> origRootLoc = selected.stream().filter(loc -> rootPath.equals(loc.getRootPath())).findAny();
-			if (origRootLoc.isPresent()) {
-				rootLocation = origRootLoc.get();
-				rootFolder = dbMgr.getFolderRecordRepository().findById(rootLocation.getRootFolderId());
-                rootFolder.setFullPathstr(rootLocation.getRootPath());
-			}
-			else {
-                rootFolder = new FolderRecord();
-                rootFolder.setName(rootLocation.getRootPath());
-                rootFolder.setParentFolderId(null);
-                rootFolder = dbMgr.getFolderRecordRepository().upsert(rootFolder);
-                rootFolder.setNew(true);
-                rootFolder.setFullPathstr(rootLocation.getRootPath());
-                rootLocation.setRootFolderId(rootFolder.getId());
-                rootLocation = dbMgr.getScanLocationRepository().save(rootLocation);
-    			DefaultMutableTreeNode root = (DefaultMutableTreeNode) treeModel.getRoot();
-    			treeModel.insertNodeInto(createLazyNode(rootLocation, rootLocation.disp(), true), root,
-    					root.getChildCount());
-            }
-			LOG.info("Joining ScanLocations into: " + rootLocation.disp());
-			FolderCreator folderCreator = new FolderCreator(rootLocation);
-			SimpleDBFileWalker walker = new SimpleDBFileWalker(dbMgr);
-			walker.walk(selected, new QuickFileCopyVisitor(folderCreator));
-		}
-		catch (IllegalStateException ex) {
-			LOG.error("Error joining ScanLocations: " + ex.getMessage());
-		}
-		tree.repaint();
-	}
 
 
 	private void onDelete() {
@@ -581,15 +464,25 @@ public class DBTreeViewer extends JFrame {
 	private void writeMemFolder(MemFolder folder, DataOutputStream out) throws IOException {
 		out.writeLong(folder.folderId);
 		out.writeInt(folder.files.size());
-		for (String file : folder.files) {
-			out.writeUTF(file);
+		for (MemFile file : folder.files) {
+			writeMemFile(file, out);
 		}
 		out.writeInt(folder.childFolders.size());
 		for (MemFolder child : folder.childFolders) {
 			writeMemFolder(child, out);
 		}
 	}
+
+	private void writeMemFile(MemFile file, DataOutputStream out) throws IOException {
+//		long fileId, String fileName, long sizeBytes, long lastModifiedAt, String sha1hash
+		out.writeLong(file.fileId);
+		out.writeUTF(file.fileName);
+		out.writeLong(file.sizeBytes);
+		out.writeLong(file.lastModifiedAt);
+		out.writeUTF(file.sha1hash != null ? file.sha1hash : "");
+	}
 	
+
 	/**
 	 * Reads a MemFolder tree written by {@link #serializeObjectToFile}. All read
 	 * folders are registered in the given map by their folderId (the root with id
@@ -611,13 +504,26 @@ public class DBTreeViewer extends JFrame {
 		folderMap.put(folder.folderId, folder);
 		int fileCount = in.readInt();
 		for (int i = 0; i < fileCount; i++) {
-			folder.files.add(in.readUTF());
+			folder.files.add(readMemFile(in));
 		}
 		int childCount = in.readInt();
 		for (int i = 0; i < childCount; i++) {
 			folder.childFolders.add(readMemFolder(in, folderMap));
 		}
 		return folder;
+	}
+
+	private MemFile readMemFile(DataInputStream in) throws IOException {
+		long fileId = in.readLong();
+		String name = in.readUTF();
+		long sizeBytes = in.readLong();
+		long lastModifiedAt = in.readLong();
+		String sha1hash = in.readUTF();
+		if (sha1hash.isEmpty()) {
+			sha1hash = null;
+		}
+		MemFile file = new MemFile(fileId, name, sizeBytes, lastModifiedAt, sha1hash);
+		return file;
 	}
 
 	/** Loads the persisted MemFolder tree into memRootFolder/memFolderMap. */
@@ -648,7 +554,7 @@ public class DBTreeViewer extends JFrame {
 		}
 	}
 	
-	public static class MemFolder {
+	public static class MemFolderOLD {
 		private static ProgressLogger PL;
 		private static Predicate<String> filter;
 		
@@ -659,7 +565,7 @@ public class DBTreeViewer extends JFrame {
 		private transient long countChildFiles;
 //		private transient long countChildBytes;
 		
-		public MemFolder(long folderId) {
+		public MemFolderOLD(long folderId) {
 			this.folderId = folderId;
 			this.childFolders = new ArrayList<>();
 			this.files = new ArrayList<>();
@@ -701,7 +607,67 @@ public class DBTreeViewer extends JFrame {
 		}
 
 	}
-	
+
+	public static class MemFolder {
+		private static ProgressLogger PL;
+		private static Predicate<String> filter;
+		
+		private long folderId;
+		private List<MemFolder> childFolders;
+		private List<MemFile> files;
+		
+		private transient long countChildFiles;
+//		private transient long countChildBytes;
+		
+		public MemFolder(long folderId) {
+			this.folderId = folderId;
+			this.childFolders = new ArrayList<>();
+			this.files = new ArrayList<>();
+			this.countChildFiles = 0;
+//			this.countChildBytes = 0;
+		}
+		public void addFile(FileRecord fileRecord) {
+			files.add(MemFile.createFromFileRecord(fileRecord));
+		}
+		public void addChildFolder(MemFolder child) {
+			childFolders.add(child);
+		}
+		public boolean isVisible() {
+			return countChildFiles > 0L;
+		}
+		public long countFiles() {
+			countChildFiles = 0;
+			for (MemFolder child : childFolders) {
+				countChildFiles += child.countFiles();
+			}
+			for (MemFile mFil : files) {
+				PL.progress(()->"Checking file: " + mFil.fileName());
+				if (filter.test(mFil.fileName().toLowerCase())) {
+					countChildFiles++;
+				}
+			}
+			return countChildFiles;
+		}
+
+		public long startCountFiles(String filterText, Predicate<String> currentFilter) {
+			filter = currentFilter;
+			PL = new ProgressLogger();
+			countFiles();
+			PL.finished(()->"countFiles("+filterText+") finished");
+			return countChildFiles;
+		}
+		public void setCountChildFiles(int fileCount) {
+			this.countChildFiles = fileCount;
+		}
+
+	}
+
+	record MemFile(long fileId, String fileName, long sizeBytes, long lastModifiedAt, String sha1hash) {
+		public static MemFile createFromFileRecord(FileRecord fileRecord) {
+			return new MemFile(fileRecord.getId(), fileRecord.getName(), fileRecord.getSizeBytes(), fileRecord.getLastModifiedAt().toEpochMilli(), fileRecord.getSha1hash());
+		}
+	}
+
 	Map<Long, MemFolder> memFolderMap = new HashMap<>();
 	MemFolder memRootFolder = null;
 
@@ -754,7 +720,7 @@ public class DBTreeViewer extends JFrame {
 			public CountResults visitFile(ScanLocation location, FolderRecord folderRecord, FileRecord fileRecord,
 					Path path) {
 				progressLogger.progress(()->AppUtils.normFilename(path));
-				memFolderMap.get(folderRecord.getId()).addFile(fileRecord.getName());
+				memFolderMap.get(folderRecord.getId()).addFile(fileRecord);
 				CountResults result;
 				if (checkFilter(fileRecord)) {
 					result = CountResults.count(fileRecord);
@@ -1066,7 +1032,12 @@ public class DBTreeViewer extends JFrame {
 			final long id = folderId;
 			for (FolderRecord folder : dbMgr.getFolderRecordRepository().findByParentFolder(id)) {
 				if (checkFilter(folder)) {
-					node.add(createLazyNode(folder, folder.disp(""), true));
+					String label = folder.disp("");
+					MemFolder mf = memFolderMap.get(folder.getId());
+					if (mf != null) {
+						label = label + "   (" + mf.countChildFiles + ")";
+					}
+					node.add(createLazyNode(folder, label, true));
 				}
 			}
 			for (FileRecord file : dbMgr.getFileRecordRepository().findByParentFolder(id)) {

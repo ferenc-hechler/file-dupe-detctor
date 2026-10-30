@@ -70,7 +70,7 @@ public class AppUtils {
 	        long totalSeconds = nanoSeconds / 1_000_000_000L;
 	        long minutes = totalSeconds / 60;
 	        long seconds = totalSeconds % 60;
-	        return String.format(Locale.ROOT, "%02d:%02d s", minutes, seconds);
+	        return String.format(Locale.ROOT, "%02d:%02d m", minutes, seconds);
 	    } else {
 	        long totalSeconds = nanoSeconds / 1_000_000_000L;
 	        long hours = totalSeconds / 3600;
