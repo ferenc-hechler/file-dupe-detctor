@@ -2,19 +2,20 @@ package com.filedupedetector.utils;
 
 import java.util.Locale;
 
-public class ProgressLogger<T> {
+public class ProgressLogger {
 
 	public static interface LogCallback {
 		String progressMessage();
 	}
 	
-	public static interface ParamLogCallback<T> {
-		String progressMessage(T param);
+	public static interface ParamLogCallback<P> {
+		String progressMessage(P param);
 	}
 	
 	private int logIntervalSeconds;
 	private long estimatedTotalCount;
 
+	private long startTime;
 	private long nextLogTime;
 	private long count;
 
@@ -30,7 +31,8 @@ public class ProgressLogger<T> {
 	public ProgressLogger(int logIntervalSeconds, long estimatedTotalCount) {
 		this.logIntervalSeconds = logIntervalSeconds;
 		this.estimatedTotalCount = estimatedTotalCount;
-		this.nextLogTime = System.nanoTime();
+		this.startTime = System.nanoTime();
+		this.nextLogTime = startTime;
 		this.count = 0;
 	}
 	
@@ -48,7 +50,7 @@ public class ProgressLogger<T> {
 	}
 
 
-	public void progress(T param, ParamLogCallback infoCallback) {
+	public <P> void progress(P param, ParamLogCallback<P> infoCallback) {
 		count++;
 		if (System.nanoTime() >= nextLogTime) {
 			String progressMessage = infoCallback.progressMessage(param);
@@ -62,19 +64,26 @@ public class ProgressLogger<T> {
 	}
 
 	public void finished(LogCallback infoCallback) {
+		String duration = AppUtils.readableTime(System.nanoTime() - startTime);
 		String progressMessage = infoCallback.progressMessage();
-		System.out.printf(Locale.ROOT, "%d/%d (%.2f%%) - %s%n", count, count, 100.0, progressMessage);
+		System.out.printf(Locale.ROOT, "%d/%d (%.2f%%) [in %s] - %s%n", count, count, 100.0, duration, progressMessage);
 	}
 
-	public void finished(T param, ParamLogCallback infoCallback) {
+	public <P> void finished(P param, ParamLogCallback<P> infoCallback) {
+		String duration = AppUtils.readableTime(System.nanoTime() - startTime);
 		String progressMessage = infoCallback.progressMessage(param);
-		System.out.printf(Locale.ROOT, "%d/%d (%.2f%%) - %s%n", count, count, 100.0, progressMessage);
+		System.out.printf(Locale.ROOT, "%d/%d (%.2f%%) [in %s] - %s%n", count, count, 100.0, duration, progressMessage);
+	}
+
+	public void finished(String message) {
+		String duration = AppUtils.readableTime(System.nanoTime() - startTime);
+		System.out.printf(Locale.ROOT, "%d/%d (%.2f%%) [in %s] - %s%n", count, count, 100.0, duration, message);
 	}
 
 	public static void main(String[] args) {
 		int MAX = 25;
-		ProgressLogger<Integer> logger;
-		logger = new ProgressLogger<>(5, MAX);
+		ProgressLogger logger;
+		logger = new ProgressLogger(5, MAX);
 		for (int i = 0; i < MAX; i++) {
 			int j = i;
 			logger.progress(()->"at Step "+j);
@@ -84,7 +93,7 @@ public class ProgressLogger<T> {
 		}
 		logger.finished(()->"at Step "+-1);
 
-		logger = new ProgressLogger<>(5);
+		logger = new ProgressLogger(5);
 		for (int i = 0; i < MAX; i++) {
 			int j = i;
 			logger.progress(()->"at Step "+j);
@@ -93,7 +102,7 @@ public class ProgressLogger<T> {
 			} catch (InterruptedException e) {}
 		}
 		logger.finished(()->"at Step "+-1);
-		logger = new ProgressLogger<>(5, MAX);
+		logger = new ProgressLogger(5, MAX);
 		for (int i = 0; i < MAX; i++) {
 			logger.progress(i, (n)->"at Step "+n);
 			try {
@@ -102,7 +111,7 @@ public class ProgressLogger<T> {
 		}
 		logger.finished(-1, (n)->"at Step "+n);
 
-		logger = new ProgressLogger<>(5);
+		logger = new ProgressLogger(5);
 		for (int i = 0; i < MAX; i++) {
 			logger.progress(i, (n)->"at Step "+n);
 			try {

@@ -54,6 +54,32 @@ public class AppUtils {
 		}
 	}
 
+	public static String readableTime(long nanoSeconds) {
+		if (nanoSeconds < 1_000_000L) {
+			return String.format(Locale.ROOT, "%.0f ns", (double)nanoSeconds);
+		} else if (nanoSeconds < 1_000_000_000L) {
+			return String.format(Locale.ROOT, "%.3f ms", nanoSeconds / 1_000_000.0);
+		} else if (nanoSeconds < 1_000_000_000L) {
+			return String.format(Locale.ROOT, "%.3f s", nanoSeconds / 1_000_000_000.0);
+		} else if (nanoSeconds < 60_000_000_000L) {
+	        long totalSeconds = nanoSeconds / 1_000_000_000L;
+	        long seconds = totalSeconds % 60;
+	        long fraction = (nanoSeconds % 1_000_000_000L) / 1_000_000L; // milliseconds
+	        return String.format(Locale.ROOT, "%02d.%03d s", seconds, fraction);
+		} else if (nanoSeconds < 3_600_000_000_000L) {
+	        long totalSeconds = nanoSeconds / 1_000_000_000L;
+	        long minutes = totalSeconds / 60;
+	        long seconds = totalSeconds % 60;
+	        return String.format(Locale.ROOT, "%02d:%02d s", minutes, seconds);
+	    } else {
+	        long totalSeconds = nanoSeconds / 1_000_000_000L;
+	        long hours = totalSeconds / 3600;
+	        long minutes = (totalSeconds % 3600) / 60;
+	        long seconds = totalSeconds % 60;
+	        return String.format(Locale.ROOT, "%02:%02d:%02d h", hours, minutes, seconds);
+	    }
+	}
+
 	private static DateTimeFormatter DATEFORMAT = DateTimeFormatter.ofPattern("dd.MM.yyyy");
 	public static String readable(Instant instant) {
 		if (instant == null) {

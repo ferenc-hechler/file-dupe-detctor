@@ -15,7 +15,7 @@ public final class CountWithDBFileWalkerMain {
 
     class ShowDBFileVisitor implements DBFileVisitor<CountResults> {
     	
-    	ProgressLogger<FileRecord> progressLogger = new ProgressLogger<>();
+    	ProgressLogger progressLogger = new ProgressLogger();
 
         @Override
         public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {

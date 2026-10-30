@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 import javax.swing.JButton;
@@ -647,16 +648,23 @@ public class DBTreeViewer extends JFrame {
 		}
 	}
 	
-	class MemFolder {
+	public static class MemFolder {
+		private static ProgressLogger PL;
+		private static Predicate<String> filter;
+		
 		private long folderId;
-		private boolean visible;
 		private List<MemFolder> childFolders;
 		private List<String> files;
+		
+		private transient long countChildFiles;
+//		private transient long countChildBytes;
+		
 		public MemFolder(long folderId) {
 			this.folderId = folderId;
-			this.visible = false;
 			this.childFolders = new ArrayList<>();
 			this.files = new ArrayList<>();
+			this.countChildFiles = 0;
+//			this.countChildBytes = 0;
 		}
 		public void addFile(String fileName) {
 			files.add(fileName.toLowerCase());
@@ -664,29 +672,34 @@ public class DBTreeViewer extends JFrame {
 		public void addChildFolder(MemFolder child) {
 			childFolders.add(child);
 		}
-		public void setVisible(boolean value) {
-			visible = value;
-		}
 		public boolean isVisible() {
-			return visible;
+			return countChildFiles > 0L;
 		}
-		public boolean updateVisibility() {
-			visible = false;
+		public long countFiles() {
+			countChildFiles = 0;
 			for (MemFolder child : childFolders) {
-				if (child.updateVisibility()) {
-					visible = true;
+				countChildFiles += child.countFiles();
+			}
+			for (String file : files) {
+				PL.progress(()->"Checking file: " + file);
+				if (filter.test(file)) {
+					countChildFiles++;
 				}
 			}
-			if (!visible) {
-				for (String file : files) {
-					if (checkFilter(file)) {
-						visible = true;
-						break;
-					}
-				}
-			}
-			return visible;
+			return countChildFiles;
 		}
+
+		public long startCountFiles(String filterText, Predicate<String> currentFilter) {
+			filter = currentFilter;
+			PL = new ProgressLogger();
+			countFiles();
+			PL.finished(()->"countFiles("+filterText+") finished");
+			return countChildFiles;
+		}
+		public void setCountChildFiles(int fileCount) {
+			this.countChildFiles = fileCount;
+		}
+
 	}
 	
 	Map<Long, MemFolder> memFolderMap = new HashMap<>();
@@ -696,7 +709,7 @@ public class DBTreeViewer extends JFrame {
 	private void updateMemFolderVisibility() {
 		if (memRootFolder == null) {
 			if (loadMemFolderFromFile()) {
-				memRootFolder.updateVisibility();
+				memRootFolder.startCountFiles(filterString, s -> checkFilter(s));
 			}
 			else {
 				readMemFoldersFromDB();
@@ -704,7 +717,7 @@ public class DBTreeViewer extends JFrame {
 			}
 		}
 		else {
-			memRootFolder.updateVisibility();
+			memRootFolder.startCountFiles(filterString, s -> checkFilter(s));
 		}
 	}
 	
@@ -716,7 +729,7 @@ public class DBTreeViewer extends JFrame {
 		if (filterPattern == null) {
 			return;
 		}
-		ProgressLogger<FileRecord> progressLogger = new ProgressLogger<>();
+		ProgressLogger progressLogger = new ProgressLogger();
 		DBFileWalker<CountResults> walker = new DBFileWalker<>(dbMgr);
 		CountResults result = walker.walk(new DBFileVisitor<>() {
 			@Override
@@ -732,12 +745,7 @@ public class DBTreeViewer extends JFrame {
 				CountResults result = CountResults.count(childVisits);
 				if (folderRecord != null) {
 					result = result.add(CountResults.count(folderRecord));
-					if (result.fileCount() > 0) {
-						memFolderMap.get(folderRecord.getId()).setVisible(true);
-					}
-					else {
-						memFolderMap.get(folderRecord.getId()).setVisible(false);
-					}
+					memFolderMap.get(folderRecord.getId()).setCountChildFiles(result.fileCount());
 				}
 				return result;
 			}
@@ -813,9 +821,8 @@ public class DBTreeViewer extends JFrame {
 		String newFilterString = promptForInput("Enter Filter:", filterString);
 		filterPattern = compileFilterPattern(newFilterString);
 		filterString = newFilterString;
-//		collectVisibleFolders();
 		updateMemFolderVisibility();
-
+		
 		treeModel.setRoot(new DefaultMutableTreeNode("Scan Locations"));
 		dbMgr.getScanLocationRepository().findAll().forEach(loc -> ((DefaultMutableTreeNode) treeModel.getRoot())
 				.add(createLazyNode(loc, loc.disp(), loc.hasRootFolderId())));
@@ -1105,4 +1112,5 @@ public class DBTreeViewer extends JFrame {
 		DBManager dbMgr = new DBManager(false);
 		SwingUtilities.invokeLater(() -> new DBTreeViewer(dbMgr).setVisible(true));
 	}
+	
 }
