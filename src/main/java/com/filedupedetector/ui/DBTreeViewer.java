@@ -56,6 +56,9 @@ import com.filedupedetector.persistence.DBFileWalker;
 import com.filedupedetector.persistence.DBFileWalker.CountResults;
 import com.filedupedetector.persistence.DBFileWalker.DBFileVisitor;
 import com.filedupedetector.persistence.DBManager;
+import com.filedupedetector.persistence.MemFileWalker;
+import com.filedupedetector.persistence.MemFileWalker.MemCountResults;
+import com.filedupedetector.persistence.MemFileWalker.MemFileVisitor;
 import com.filedupedetector.persistence.SimpleDBFileWalker;
 import com.filedupedetector.persistence.SimpleDBFileWalker.SimpleDBFileVisitor;
 import com.filedupedetector.utils.AppUtils;
@@ -569,6 +572,8 @@ public class DBTreeViewer extends JFrame {
 
 	private void writeMemFolder(MemFolder folder, DataOutputStream out) throws IOException {
 		out.writeLong(folder.folderId);
+		String folderName = folder.folderName != null ? folder.folderName : "";
+		out.writeUTF(folderName);
 		out.writeInt(folder.files.size());
 		for (MemFile file : folder.files) {
 			writeMemFile(file, out);
@@ -606,7 +611,12 @@ public class DBTreeViewer extends JFrame {
 	}
 
 	private MemFolder readMemFolder(DataInputStream in, Map<Long, MemFolder> folderMap) throws IOException {
-		MemFolder folder = new MemFolder(in.readLong());
+		long folderId = in.readLong();
+		String folderName = in.readUTF();
+		if (folderName.isEmpty()) {
+			folderName = null;
+		}
+		MemFolder folder = new MemFolder(folderId, folderName);
 		folderMap.put(folder.folderId, folder);
 		int fileCount = in.readInt();
 		for (int i = 0; i < fileCount; i++) {
@@ -666,15 +676,17 @@ public class DBTreeViewer extends JFrame {
 		private static ProgressLogger PL;
 		private static Predicate<String> filter;
 		
-		private long folderId;
-		private List<MemFolder> childFolders;
-		private List<MemFile> files;
+		public long folderId;
+		public String folderName;
+		public List<MemFolder> childFolders;
+		public List<MemFile> files;
 		
-		private transient long countChildFiles;
-		private transient long countChildBytes;
+		public transient long countChildFiles;
+		public transient long countChildBytes;
 		
-		public MemFolder(long folderId) {
+		public MemFolder(long folderId, String folderName) {
 			this.folderId = folderId;
+			this.folderName = folderName;
 			this.childFolders = new ArrayList<>();
 			this.files = new ArrayList<>();
 			this.countChildFiles = 0;
@@ -713,13 +725,16 @@ public class DBTreeViewer extends JFrame {
 			PL.finished(()->"countFiles("+filterText+") finished");
 			return countChildFiles;
 		}
-		public void setCountChildFiles(int fileCount) {
+		public void setCountChildFiles(long fileCount) {
 			this.countChildFiles = fileCount;
+		}
+		public void setCountChildBytes(long countBytes) {
+			this.countChildBytes = countBytes;
 		}
 
 	}
 
-	record MemFile(long fileId, String fileName, long sizeBytes, long lastModifiedAt, String sha1hash) {
+	public record MemFile(long fileId, String fileName, long sizeBytes, long lastModifiedAt, String sha1hash) {
 		public static MemFile createFromFileRecord(FileRecord fileRecord) {
 			return new MemFile(fileRecord.getId(), fileRecord.getName(), fileRecord.getSizeBytes(), fileRecord.getLastModifiedAt().toEpochMilli(), fileRecord.getSha1hash());
 		}
@@ -746,18 +761,15 @@ public class DBTreeViewer extends JFrame {
 	
 	private void readMemFoldersFromDB() {
 		memFolderMap = new HashMap<>();
-		memRootFolder = new MemFolder(-1);
+		memRootFolder = new MemFolder(-1, null);
 		memFolderMap.put(null, memRootFolder);
 		memFolderMap.put(-1L, memRootFolder);
-		if (filterPattern == null) {
-			return;
-		}
 		ProgressLogger progressLogger = new ProgressLogger();
 		DBFileWalker<CountResults> walker = new DBFileWalker<>(dbMgr);
 		CountResults result = walker.walk(new DBFileVisitor<>() {
 			@Override
 			public void preVisitFolder(ScanLocation location, FolderRecord folderRecord, Path path) {
-				MemFolder mf = new MemFolder(folderRecord.getId());
+				MemFolder mf = new MemFolder(folderRecord.getId(), folderRecord.getName());
 				memFolderMap.put(mf.folderId, mf);
 				memFolderMap.get(folderRecord.getParentFolderId()).addChildFolder(mf);
 			}
@@ -769,6 +781,7 @@ public class DBTreeViewer extends JFrame {
 				if (folderRecord != null) {
 					result = result.add(CountResults.count(folderRecord));
 					memFolderMap.get(folderRecord.getId()).setCountChildFiles(result.fileCount());
+					memFolderMap.get(folderRecord.getId()).setCountChildBytes(result.byteCount());
 				}
 				return result;
 			}
@@ -856,28 +869,53 @@ public class DBTreeViewer extends JFrame {
 	}
 
 
-
 	private void onMarkRemote() {
 		List<ScanLocation> selected = getCheckedScanLocations();
 		LOG.info("Selected ScanLocations ({}):", selected.size());
 		selected.forEach(loc -> LOG.info("  {}", loc.disp()));
 		searchForDuplicateHashes(selected);
-		CountResults counts = walkLocations(selected);
+		MemCountResults counts = walkLocations(selected);
 		LOG.info("Counts for selected ScanLocations: " + counts);
 	}
 
 	private void searchForDuplicateHashes(List<ScanLocation> selected) {
-		HashFilewalker hashWalker = new HashFilewalker();
-		DBFileWalker<Object> walker = new DBFileWalker<>(dbMgr);
-		walker.walk(selected, hashWalker);
+		HashFileVisitor hashVisitor = new HashFileVisitor();
+		MemFileWalker<Object> walker = new MemFileWalker<>(memRootFolder);
+		walker.walk(selected, hashVisitor);
 		markedSHAs.clear();
-		markedSHAs.putAll(hashWalker.hash2fileIdMap);
-		if (!hashWalker.duplicateHashIDsMap.isEmpty()) {
-			LOG.info("Duplicate in marked files found: "+hashWalker.duplicateHashIDsMap.size());
+		markedSHAs.putAll(hashVisitor.hash2fileIdMap);
+		if (!hashVisitor.duplicateHashIDsMap.isEmpty()) {
+			LOG.info("Duplicate in marked files found: "+hashVisitor.duplicateHashIDsMap.size());
 		} else {
 			LOG.info("No duplicates inside marked files found.");
 		}
 		DupsCount dups = markDuplicateFolders();
+		LOG.info("TOTAL Duplicate files: " + dups.duplicates + " / " + (dups.duplicates+dups.unique) );
+		tree.repaint();
+	}
+
+	
+	private void onMarkRemoteOLD() {
+		List<ScanLocation> selected = getCheckedScanLocations();
+		LOG.info("Selected ScanLocations ({}):", selected.size());
+		selected.forEach(loc -> LOG.info("  {}", loc.disp()));
+		searchForDuplicateHashesOLD(selected);
+		CountResults counts = walkLocationsOLD(selected);
+		LOG.info("Counts for selected ScanLocations: " + counts);
+	}
+
+	private void searchForDuplicateHashesOLD(List<ScanLocation> selected) {
+		HashFileVisitorOLD hashVisitor = new HashFileVisitorOLD();
+		DBFileWalker<Object> walker = new DBFileWalker<>(dbMgr);
+		walker.walk(selected, hashVisitor);
+		markedSHAs.clear();
+		markedSHAs.putAll(hashVisitor.hash2fileIdMap);
+		if (!hashVisitor.duplicateHashIDsMap.isEmpty()) {
+			LOG.info("Duplicate in marked files found: "+hashVisitor.duplicateHashIDsMap.size());
+		} else {
+			LOG.info("No duplicates inside marked files found.");
+		}
+		DupsCount dups = markDuplicateFoldersOLD();
 		LOG.info("TOTAL Duplicate files: " + dups.duplicates + " / " + (dups.duplicates+dups.unique) );
 		tree.repaint();
 	}
@@ -902,6 +940,44 @@ public class DBTreeViewer extends JFrame {
 	static Map<Long, Color> folderColors = new HashMap<>();
 	
 	public DupsCount markDuplicateFolders() {
+		folderColors.clear();
+		MemFileWalker<DupsCount> walker = new MemFileWalker<>(memRootFolder);
+		DupsCount result = walker.walk(new MemFileVisitor<>() {
+			
+			@Override
+			public void preVisitFolder(MemFolder mf, Path path) {
+			}
+
+			@Override
+			public DupsCount visitFolder(MemFolder mf, Path path, List<DupsCount> childVisits) {
+				DupsCount result = DupsCount.sum(childVisits);
+				if (mf != null) {
+					if (result.duplicates > 0) {
+						if (result.unique > 0) {
+							folderColors.put(mf.folderId, Color.ORANGE);
+						} else {
+							folderColors.put(mf.folderId, Color.RED);
+						}
+					}
+				}
+				return result;
+			}
+
+			@Override
+			public DupsCount visitFile(MemFolder mf, MemFile mFil, Path path) {
+				Long dup = markedSHAs.get(mFil.sha1hash());
+				if (dup != null && dup != mFil.fileId()) {
+					return new DupsCount(1, 0);
+				}
+				return new DupsCount(0, 1);
+			}
+		});
+		return result;
+	}
+
+
+	
+	public DupsCount markDuplicateFoldersOLD() {
 		folderColors.clear();
 		DBFileWalker<DupsCount> walker = new DBFileWalker<>(dbMgr);
 		DupsCount result = walker.walk(new DBFileVisitor<>() {
@@ -939,7 +1015,38 @@ public class DBTreeViewer extends JFrame {
 		return result;
 	}
 
-	public static class HashFilewalker implements DBFileVisitor<Object> {
+	public static class HashFileVisitor implements MemFileVisitor<Object> {
+		
+		public Map<String, Long> hash2fileIdMap = new HashMap<>();
+		public Map<String, Set<Long>> duplicateHashIDsMap = new HashMap<>();
+		
+		@Override
+		public void preVisitFolder(MemFolder mf, Path path) {
+		}
+
+		@Override
+		public Object visitFolder(MemFolder mf, Path path, List<Object> childVisits) {
+			return null;
+		}
+
+		@Override
+		public Object visitFile(MemFolder mf, MemFile mFil, Path path) {
+			if (mFil.sha1hash() != null) {
+				Long dup = hash2fileIdMap.put(mFil.sha1hash(), mFil.fileId());
+				if (dup != null) {
+					hash2fileIdMap.put(mFil.sha1hash(), 0L);
+					Set<Long> dupSet = duplicateHashIDsMap.computeIfAbsent(mFil.sha1hash(), k -> new HashSet<>());
+					if (dup != 0) {
+						dupSet.add(dup);
+					}
+					dupSet.add(mFil.fileId());
+				}
+			}
+			return null;
+		}
+	}
+	
+	public static class HashFileVisitorOLD implements DBFileVisitor<Object> {
 		
 		public Map<String, Long> hash2fileIdMap = new HashMap<>();
 		public Map<String, Set<Long>> duplicateHashIDsMap = new HashMap<>();
@@ -971,7 +1078,32 @@ public class DBTreeViewer extends JFrame {
 		}
 	}
 	
-	private CountResults walkLocations(List<ScanLocation> selected) {
+	private MemCountResults walkLocations(List<ScanLocation> selected) {
+		MemFileWalker<MemCountResults> walker = new MemFileWalker<>(memRootFolder);
+		MemCountResults result = walker.walk(selected, new MemFileVisitor<>() {
+			@Override
+			public void preVisitFolder(MemFolder mf, Path path) {
+			}
+
+			@Override
+			public MemCountResults visitFolder(MemFolder mf, Path path, List<MemCountResults> childVisits) {
+				MemCountResults result = MemCountResults.count(childVisits);
+				if (mf != null) {
+					result = result.add(MemCountResults.count(mf));
+				}
+				return result;
+			}
+
+			@Override
+			public MemCountResults visitFile(MemFolder mf, MemFile mFil, Path path) {
+				MemCountResults result = MemCountResults.count(mFil);
+				return result;
+			}
+		});
+		return result;
+	}
+
+	private CountResults walkLocationsOLD(List<ScanLocation> selected) {
 		DBFileWalker<CountResults> walker = new DBFileWalker<>(dbMgr);
 		CountResults result = walker.walk(selected, new DBFileVisitor<>() {
 			@Override
