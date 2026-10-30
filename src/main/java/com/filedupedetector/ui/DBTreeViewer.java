@@ -221,8 +221,36 @@ public class DBTreeViewer extends JFrame {
 		add(top, BorderLayout.NORTH);
 		JScrollPane scroll = new JScrollPane(tree);
 		JPanel header = new JPanel(new BorderLayout());
-		header.add(new JLabel(" Name"), BorderLayout.CENTER);
-		header.add(createColumns("Size", "Last modified", "SHA1", null, null), BorderLayout.EAST);
+		JLabel nameHeader = new JLabel(" Name");
+		nameHeader.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+		nameHeader.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent e) {
+				sortMode = SortMode.NAME;
+				onResetTree();
+			}
+		});
+		header.add(nameHeader, BorderLayout.CENTER);
+		JPanel headerCols = createColumns("Size", "Last modified", "SHA1", null, null);
+		Component sizeHeader = headerCols.getComponent(0);
+		sizeHeader.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+		sizeHeader.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent e) {
+				sortMode = sortMode == SortMode.SIZE_DESC ? SortMode.SIZE_ASC : SortMode.SIZE_DESC;
+				onResetTree();
+			}
+		});
+		Component lastModHeader = headerCols.getComponent(1);
+		lastModHeader.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+		lastModHeader.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent e) {
+				sortMode = sortMode == SortMode.LASTMOD_DESC ? SortMode.LASTMOD_ASC : SortMode.LASTMOD_DESC;
+				onResetTree();
+			}
+		});
+		header.add(headerCols, BorderLayout.EAST);
 		scroll.setColumnHeaderView(header);
 		// the viewport size changes without the tree being resized (e.g. when shrinking)
 		scroll.getViewport().addComponentListener(new java.awt.event.ComponentAdapter() {
@@ -236,6 +264,10 @@ public class DBTreeViewer extends JFrame {
 		setSize(900, 600);
 		setLocationRelativeTo(null);
 	}
+
+	private enum SortMode { NAME, SIZE_DESC, SIZE_ASC, LASTMOD_DESC, LASTMOD_ASC }
+
+	private SortMode sortMode = SortMode.NAME;
 
 	private static final int[] COLUMN_WIDTHS = { 80, 80, 80 };
 
@@ -653,6 +685,7 @@ public class DBTreeViewer extends JFrame {
 		}
 		public long countFiles() {
 			countChildFiles = 0;
+			countChildBytes = 0;
 			for (MemFolder child : childFolders) {
 				countChildFiles += child.countFiles();
 				countChildBytes += child.countChildBytes;
@@ -1001,21 +1034,33 @@ public class DBTreeViewer extends JFrame {
 		}
 		if (folderId != null) {
 			final long id = folderId;
+			List<DefaultMutableTreeNode> children = new ArrayList<>();
 			for (FolderRecord folder : dbMgr.getFolderRecordRepository().findByParentFolder(id)) {
 				if (checkFilter(folder)) {
-					node.add(createLazyNode(folder, folder.getName(), true));
+					children.add(createLazyNode(folder, folder.getName(), true));
 				}
 			}
 			for (FileRecord file : dbMgr.getFileRecordRepository().findByParentFolder(id)) {
 				if (checkFilter(file)) {
-//					String name = file.getName();
-//					String sizeBytes = readable(file.getSizeBytes());
-//					String lastModifiedAt = readable(file.getLastModifiedAt());
-//					String sha1hash = readable(file.getSha1hash());
-//					String label = "%s %s  %s  %s".formatted(AppUtils.padr(name,60), AppUtils.padl(sizeBytes,10), lastModifiedAt, sha1hash);
-					node.add(new DefaultMutableTreeNode(new NodeData(file, file.getName()), false));
+					children.add(new DefaultMutableTreeNode(new NodeData(file, file.getName()), false));
 				}
 			}
+			if (sortMode != SortMode.NAME) {
+				if (sortMode == SortMode.LASTMOD_DESC || sortMode == SortMode.LASTMOD_ASC) {
+					java.util.Comparator<DefaultMutableTreeNode> cmp = java.util.Comparator
+							.comparingLong(n -> ((NodeData) n.getUserObject()).sortModified());
+					children.sort(sortMode == SortMode.LASTMOD_DESC ? cmp.reversed() : cmp);
+				} 
+				else if (sortMode == SortMode.SIZE_DESC || sortMode == SortMode.SIZE_ASC) {
+					java.util.Comparator<DefaultMutableTreeNode> cmp = java.util.Comparator
+							.comparingLong(n -> ((NodeData) n.getUserObject()).sortSize());
+					children.sort(sortMode == SortMode.SIZE_DESC ? cmp.reversed() : cmp);
+				}
+				else {
+					throw new IllegalStateException("Unknown sort mode: " + sortMode);
+				}
+			}
+			children.forEach(node::add);
 		}
 		treeModel.nodeStructureChanged(node);
 	}
@@ -1025,6 +1070,20 @@ public class DBTreeViewer extends JFrame {
 		@Override
 		public String toString() {
 			return label;
+		}
+
+		/** Size in bytes used for sorting (folders only known if counted). */
+		long sortSize() {
+			if (object instanceof FileRecord f) {
+				return f.getSizeBytes();
+			}
+			if (object instanceof FolderRecord folder) {
+				MemFolder mf = memFolderMap.get(folder.getId());
+				if (mf != null) {
+					return mf.countChildBytes;
+				}
+			}
+			return 0L;
 		}
 
 		String sizeText() {
@@ -1047,10 +1106,23 @@ public class DBTreeViewer extends JFrame {
 			if (object instanceof FolderRecord folder) {
 				MemFolder mf = memFolderMap.get(folder.getId());
 				if (mf != null) {
-					return "("+Long.toString(mf.countChildFiles)+")";
+					return AppUtils.padl("("+Long.toString(mf.countChildFiles)+")", 10);
 				}
 			}
 			return "";
+		}
+
+		long sortModified() {
+			if (object instanceof FileRecord f) {
+				return f.getLastModifiedAt().toEpochMilli();
+			}
+			if (object instanceof FolderRecord folder) {
+				MemFolder mf = memFolderMap.get(folder.getId());
+				if (mf != null) {
+					return mf.countChildFiles;
+				}
+			}
+			return 0;
 		}
 
 		String sha1Text() {
