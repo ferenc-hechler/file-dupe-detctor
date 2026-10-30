@@ -7,6 +7,12 @@ import java.awt.FlowLayout;
 import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -555,6 +561,92 @@ public class DBTreeViewer extends JFrame {
 	}
 
 	
+    public static Path getMemFolderFile() {
+        String userHome = System.getProperty("user.home");
+        return Path.of(userHome, ".file-dupe-detector-dev", "memfolder.serialized");
+    }
+    
+	/**
+	 * Persists a MemFolder tree (only folderId, files and childFolders) in a
+	 * binary format.
+	 */
+	public void serializeObjectToFile(MemFolder memRootFolder, Path memFolderFile) throws IOException {
+		try (DataOutputStream out = new DataOutputStream(
+				new BufferedOutputStream(Files.newOutputStream(memFolderFile)))) {
+			writeMemFolder(memRootFolder, out);
+		}
+	}
+
+	private void writeMemFolder(MemFolder folder, DataOutputStream out) throws IOException {
+		out.writeLong(folder.folderId);
+		out.writeInt(folder.files.size());
+		for (String file : folder.files) {
+			out.writeUTF(file);
+		}
+		out.writeInt(folder.childFolders.size());
+		for (MemFolder child : folder.childFolders) {
+			writeMemFolder(child, out);
+		}
+	}
+	
+	/**
+	 * Reads a MemFolder tree written by {@link #serializeObjectToFile}. All read
+	 * folders are registered in the given map by their folderId (the root with id
+	 * -1 is additionally registered under the key null). The visible flag is not
+	 * persisted and is initially false.
+	 */
+	public MemFolder deserializeObjectFromFile(Path memFolderFile, Map<Long, MemFolder> folderMap) throws IOException {
+		try (DataInputStream in = new DataInputStream(new BufferedInputStream(Files.newInputStream(memFolderFile)))) {
+			MemFolder root = readMemFolder(in, folderMap);
+			if (root.folderId == -1) {
+				folderMap.put(null, root);
+			}
+			return root;
+		}
+	}
+
+	private MemFolder readMemFolder(DataInputStream in, Map<Long, MemFolder> folderMap) throws IOException {
+		MemFolder folder = new MemFolder(in.readLong());
+		folderMap.put(folder.folderId, folder);
+		int fileCount = in.readInt();
+		for (int i = 0; i < fileCount; i++) {
+			folder.files.add(in.readUTF());
+		}
+		int childCount = in.readInt();
+		for (int i = 0; i < childCount; i++) {
+			folder.childFolders.add(readMemFolder(in, folderMap));
+		}
+		return folder;
+	}
+
+	/** Loads the persisted MemFolder tree into memRootFolder/memFolderMap. */
+	public boolean loadMemFolderFromFile() {
+		Path memFolderFile = getMemFolderFile();
+		if (!Files.isRegularFile(memFolderFile)) {
+			return false;
+		}
+		try {
+			Map<Long, MemFolder> folderMap = new HashMap<>();
+			MemFolder root = deserializeObjectFromFile(memFolderFile, folderMap);
+			memFolderMap = folderMap;
+			memRootFolder = root;
+			return true;
+		} catch (Exception e) {
+			LOG.error("Failed to load MemFolder from file: " + memFolderFile, e);
+			return false;
+		}
+	}
+
+    public void saveMemFolderToFile(MemFolder memRootFolder) {
+		Path memFolderFile = getMemFolderFile();
+		try {
+			Files.createDirectories(memFolderFile.getParent());
+			serializeObjectToFile(memRootFolder, memFolderFile);
+		} catch (Exception e) {
+			LOG.error("Failed to save MemFolder to file: " + memFolderFile, e);
+		}
+	}
+	
 	class MemFolder {
 		private long folderId;
 		private boolean visible;
@@ -603,7 +695,13 @@ public class DBTreeViewer extends JFrame {
 
 	private void updateMemFolderVisibility() {
 		if (memRootFolder == null) {
-			readMemFoldersFromDB();
+			if (loadMemFolderFromFile()) {
+				memRootFolder.updateVisibility();
+			}
+			else {
+				readMemFoldersFromDB();
+				saveMemFolderToFile(memRootFolder);
+			}
 		}
 		else {
 			memRootFolder.updateVisibility();
