@@ -126,7 +126,11 @@ public class DBTreeViewer extends JFrame {
 				Color fg = sel ? getTextSelectionColor() : getForeground();
 				JPanel cols = createColumns(size, modified, sha1, fg, bg);
 				panel.add(cols, BorderLayout.EAST);
-				int indent = level * 20;
+				int total = 20;
+				if (t.getUI() instanceof javax.swing.plaf.basic.BasicTreeUI bui) {
+					total = bui.getLeftChildIndent() + bui.getRightChildIndent();
+				}
+				int indent = level * total;
 				int avail = t.getParent() != null ? t.getParent().getWidth() - indent : 0;
 				Dimension pref = panel.getPreferredSize();
 				panel.setPreferredSize(new Dimension(Math.max(avail, pref.width), pref.height));
@@ -215,13 +219,25 @@ public class DBTreeViewer extends JFrame {
 		top.add(resetTreeButton);
 		top.add(deleteButton);
 		add(top, BorderLayout.NORTH);
-		add(new JScrollPane(tree), BorderLayout.CENTER);
+		JScrollPane scroll = new JScrollPane(tree);
+		JPanel header = new JPanel(new BorderLayout());
+		header.add(new JLabel(" Name"), BorderLayout.CENTER);
+		header.add(createColumns("Size", "Last modified", "SHA1", null, null), BorderLayout.EAST);
+		scroll.setColumnHeaderView(header);
+		// the viewport size changes without the tree being resized (e.g. when shrinking)
+		scroll.getViewport().addComponentListener(new java.awt.event.ComponentAdapter() {
+			@Override
+			public void componentResized(java.awt.event.ComponentEvent e) {
+				tree.setCellRenderer(tree.getCellRenderer());
+			}
+		});
+		add(scroll, BorderLayout.CENTER);
 		setDefaultCloseOperation(EXIT_ON_CLOSE);
 		setSize(900, 600);
 		setLocationRelativeTo(null);
 	}
 
-	private static final int[] COLUMN_WIDTHS = { 90, 150, 300 };
+	private static final int[] COLUMN_WIDTHS = { 70, 80, 70 };
 
 	/** Creates the right-aligned columns (size, last modified, SHA1). */
 	private static JPanel createColumns(String size, String modified, String sha1, Color fg, Color bg) {
