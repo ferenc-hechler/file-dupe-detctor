@@ -83,6 +83,10 @@ public class DBTreeViewer extends JFrame {
 		super("File Dupe Detector - DB Viewer");
 		this.dbMgr = dbMgr;
 
+		if (loadMemFolderFromFile()) {
+			memRootFolder.startCountFiles(filterString, s -> checkFilter(s));
+		}
+		
 		DefaultMutableTreeNode root = new DefaultMutableTreeNode("Scan Locations");
 		this.treeModel = new DefaultTreeModel(root);
 		this.tree = new JTree(treeModel);
@@ -219,7 +223,8 @@ public class DBTreeViewer extends JFrame {
 		top.add(resetTreeButton);
 		top.add(deleteButton);
 		add(top, BorderLayout.NORTH);
-		JScrollPane scroll = new JScrollPane(tree);
+		JScrollPane scroll = new JScrollPane(tree, JScrollPane.VERTICAL_SCROLLBAR_ALWAYS,
+				JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 		JPanel header = new JPanel(new BorderLayout());
 		JLabel nameHeader = new JLabel(" Name");
 		nameHeader.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
@@ -231,7 +236,7 @@ public class DBTreeViewer extends JFrame {
 			}
 		});
 		header.add(nameHeader, BorderLayout.CENTER);
-		JPanel headerCols = createColumns("Size", "Last modified", "SHA1", null, null);
+		JPanel headerCols = createColumns("Size", "Last mod.", "SHA1", null, null);
 		Component sizeHeader = headerCols.getComponent(0);
 		sizeHeader.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
 		sizeHeader.addMouseListener(new MouseAdapter() {
@@ -634,6 +639,7 @@ public class DBTreeViewer extends JFrame {
 			return false;
 		}
 		try {
+			LOG.info("Loading MemFolder from file: " + memFolderFile);
 			Map<Long, MemFolder> folderMap = new HashMap<>();
 			MemFolder root = deserializeObjectFromFile(memFolderFile, folderMap);
 			memFolderMap = folderMap;
@@ -1096,6 +1102,12 @@ public class DBTreeViewer extends JFrame {
 					return readable(mf.countChildBytes);
 				}
 			}
+			if (object instanceof ScanLocation location) {
+				MemFolder mf = memFolderMap.get(location.getRootFolderId());
+				if (mf != null) {
+					return readable(mf.countChildBytes);
+				}
+			}
 			return "";
 		}
 
@@ -1106,7 +1118,13 @@ public class DBTreeViewer extends JFrame {
 			if (object instanceof FolderRecord folder) {
 				MemFolder mf = memFolderMap.get(folder.getId());
 				if (mf != null) {
-					return AppUtils.padl("("+Long.toString(mf.countChildFiles)+")", 10);
+					return "("+Long.toString(mf.countChildFiles)+")";
+				}
+			}
+			if (object instanceof ScanLocation location) {
+				MemFolder mf = memFolderMap.get(location.getRootFolderId());
+				if (mf != null) {
+					return "("+Long.toString(mf.countChildFiles)+")";
 				}
 			}
 			return "";
