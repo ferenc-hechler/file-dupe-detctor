@@ -1,12 +1,11 @@
 package com.filedupedetector.ui;
 
-import static com.filedupedetector.utils.AppUtils.padl;
-import static com.filedupedetector.utils.AppUtils.padr;
 import static com.filedupedetector.utils.AppUtils.readable;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
@@ -19,7 +18,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -30,13 +28,16 @@ import java.util.Set;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
+import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTree;
+import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.event.TreeExpansionEvent;
 import javax.swing.event.TreeWillExpandListener;
@@ -102,15 +103,40 @@ public class DBTreeViewer extends JFrame {
 						setForeground(c);
 					}
 				}
-				if (value instanceof DefaultMutableTreeNode n && isScanLocationNode(n)) {
-					renderBox.setSelected(checkedNodes.contains(n));
-					JPanel panel = new JPanel(new BorderLayout());
-					panel.setOpaque(false);
-					panel.add(renderBox, BorderLayout.WEST);
-					panel.add(this, BorderLayout.CENTER);
-					return panel;
+				JPanel panel = new JPanel(new BorderLayout());
+				panel.setOpaque(false);
+				int level = 0;
+				if (value instanceof DefaultMutableTreeNode n) {
+					level = n.getLevel();
+					if (isScanLocationNode(n)) {
+						renderBox.setSelected(checkedNodes.contains(n));
+						panel.add(renderBox, BorderLayout.WEST);
+					}
 				}
-				return this;
+				panel.add(this, BorderLayout.CENTER);
+				String size = "";
+				String modified = "";
+				String sha1 = "";
+				if (value instanceof DefaultMutableTreeNode n && n.getUserObject() instanceof NodeData d) {
+					size = d.sizeText();
+					modified = d.modifiedText();
+					sha1 = d.sha1Text();
+				}
+				Color bg = sel ? getBackgroundSelectionColor() : null;
+				Color fg = sel ? getTextSelectionColor() : getForeground();
+				JPanel cols = createColumns(size, modified, sha1, fg, bg);
+				panel.add(cols, BorderLayout.EAST);
+				int indent = level * 20;
+				int avail = t.getParent() != null ? t.getParent().getWidth() - indent : 0;
+				Dimension pref = panel.getPreferredSize();
+				panel.setPreferredSize(new Dimension(Math.max(avail, pref.width), pref.height));
+				return panel;
+			}
+		});
+		tree.addComponentListener(new java.awt.event.ComponentAdapter() {
+			@Override
+			public void componentResized(java.awt.event.ComponentEvent e) {
+				tree.treeDidChange();
 			}
 		});
 
@@ -193,6 +219,28 @@ public class DBTreeViewer extends JFrame {
 		setDefaultCloseOperation(EXIT_ON_CLOSE);
 		setSize(900, 600);
 		setLocationRelativeTo(null);
+	}
+
+	private static final int[] COLUMN_WIDTHS = { 90, 150, 300 };
+
+	/** Creates the right-aligned columns (size, last modified, SHA1). */
+	private static JPanel createColumns(String size, String modified, String sha1, Color fg, Color bg) {
+		JPanel cols = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+		cols.setOpaque(bg != null);
+		if (bg != null) {
+			cols.setBackground(bg);
+		}
+		String[] texts = { size, modified, sha1 };
+		for (int i = 0; i < texts.length; i++) {
+			JLabel l = new JLabel(texts[i], i == 0 ? SwingConstants.RIGHT : SwingConstants.LEFT);
+			l.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
+			l.setPreferredSize(new Dimension(COLUMN_WIDTHS[i], l.getPreferredSize().height));
+			if (fg != null) {
+				l.setForeground(fg);
+			}
+			cols.add(l);
+		}
+		return cols;
 	}
 
 	class FolderCreator {
@@ -1047,12 +1095,12 @@ public class DBTreeViewer extends JFrame {
 			}
 			for (FileRecord file : dbMgr.getFileRecordRepository().findByParentFolder(id)) {
 				if (checkFilter(file)) {
-					String name = file.getName();
-					String sizeBytes = readable(file.getSizeBytes());
-					String lastModifiedAt = readable(file.getLastModifiedAt());
-					String sha1hash = readable(file.getSha1hash());
-					String label = "%s %s  %s  %s".formatted(padr(name,60), padl(sizeBytes,10), lastModifiedAt, sha1hash);
-					node.add(new DefaultMutableTreeNode(new NodeData(file, label), false));
+//					String name = file.getName();
+//					String sizeBytes = readable(file.getSizeBytes());
+//					String lastModifiedAt = readable(file.getLastModifiedAt());
+//					String sha1hash = readable(file.getSha1hash());
+//					String label = "%s %s  %s  %s".formatted(AppUtils.padr(name,60), AppUtils.padl(sizeBytes,10), lastModifiedAt, sha1hash);
+					node.add(new DefaultMutableTreeNode(new NodeData(file, file.getName()), false));
 				}
 			}
 		}
@@ -1064,6 +1112,18 @@ public class DBTreeViewer extends JFrame {
 		@Override
 		public String toString() {
 			return label;
+		}
+
+		String sizeText() {
+			return object instanceof FileRecord f ? readable(f.getSizeBytes()) : "";
+		}
+
+		String modifiedText() {
+			return object instanceof FileRecord f ? readable(f.getLastModifiedAt()) : "";
+		}
+
+		String sha1Text() {
+			return object instanceof FileRecord f ? readable(f.getSha1hash()) : "";
 		}
 
 		/** Color of the model object, or null for the default color. */
